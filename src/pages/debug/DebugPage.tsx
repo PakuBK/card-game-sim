@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 
-import { getCards, getHealth, postEcho } from "./api/endpoints";
+import { getCards, getHealth, postEcho } from "../../api/endpoints";
 
 const EchoMessageSchema = z
   .string()
@@ -17,7 +17,7 @@ function formatIso(iso: string | undefined): string {
   return d.toLocaleString();
 }
 
-export function App() {
+export default function DebugPage() {
   const healthQuery = useQuery({
     queryKey: ["health"],
     queryFn: getHealth,
