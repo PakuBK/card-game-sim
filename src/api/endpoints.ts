@@ -1,5 +1,10 @@
 import { fetchJson } from "./http";
-import type { CardSummary, EchoRequest, EchoResponse, HealthResponse } from "./types";
+import type { components } from "./generated/openapi";
+
+export type HealthResponse = components["schemas"]["HealthResponse"];
+export type CardSummary = components["schemas"]["CardSummary"];
+export type EchoRequest = components["schemas"]["EchoRequest"];
+export type EchoResponse = components["schemas"]["EchoResponse"];
 
 export function getHealth(): Promise<HealthResponse> {
   return fetchJson<HealthResponse>("/api/health");

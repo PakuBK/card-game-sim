@@ -55,3 +55,39 @@ Open the app at the URL printed by `vp dev` (typically `http://localhost:5173`).
 - `GET /api/health`
 - `GET /api/cards`
 - `POST /api/echo`
+
+## Frontend API types (OpenAPI)
+
+TypeScript types are generated from the FastAPI OpenAPI schema.
+
+1. Start the backend (or run full stack):
+
+```powershell
+vp run dev:backend
+```
+
+2. Generate types:
+
+```powershell
+vp run gen:api
+```
+
+This writes the generated types to `src/api/generated/openapi.ts`.
+
+Note: a Vite+ git `pre-commit` hook attempts to run `vp run gen:api` automatically and stage the updated generated file. If generation fails, it will warn and continue the commit.
+
+If `vp check` reports formatting issues after regeneration, run:
+
+```powershell
+vp fmt src/api/generated/openapi.ts --write
+```
+
+Or (formats everything):
+
+```powershell
+vp check --fix
+```
+
+## Frontend validation (Zod)
+
+The React UI uses Zod for client-side validation of user input (example: Echo message).

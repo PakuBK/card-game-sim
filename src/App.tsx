@@ -1,7 +1,14 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { z } from "zod";
 
 import { getCards, getHealth, postEcho } from "./api/endpoints";
+
+const EchoMessageSchema = z
+  .string()
+  .trim()
+  .min(1, "Message is required")
+  .max(200, "Message must be at most 200 characters");
 
 function formatIso(iso: string | undefined): string {
   if (!iso) return "";
@@ -23,6 +30,7 @@ export function App() {
   });
 
   const [echoMessage, setEchoMessage] = useState("hello from frontend");
+  const [echoValidationError, setEchoValidationError] = useState<string | null>(null);
 
   const echoMutation = useMutation({
     mutationFn: async () =>
@@ -100,15 +108,30 @@ export function App() {
               <input
                 className="rounded border px-3 py-2"
                 value={echoMessage}
-                onChange={(e) => setEchoMessage(e.target.value)}
+                onChange={(e) => {
+                  setEchoMessage(e.target.value);
+                  setEchoValidationError(null);
+                }}
               />
+              {echoValidationError ? (
+                <span className="text-sm text-red-600">{echoValidationError}</span>
+              ) : null}
             </label>
 
             <div className="flex items-center gap-3">
               <button
                 type="button"
                 className="rounded border px-3 py-2 text-sm"
-                onClick={() => echoMutation.mutate()}
+                onClick={() => {
+                  const parsed = EchoMessageSchema.safeParse(echoMessage);
+                  if (!parsed.success) {
+                    setEchoValidationError(parsed.error.issues[0]?.message ?? "Invalid message");
+                    return;
+                  }
+
+                  setEchoValidationError(null);
+                  echoMutation.mutate();
+                }}
                 disabled={echoMutation.isPending}
               >
                 {echoMutation.isPending ? "Sending…" : "Send"}

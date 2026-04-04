@@ -8,6 +8,7 @@
     "dev:backend": "backend/.venv/Scripts/python backend/run_dev.py",
     "dev:frontend": "vp dev",
     "dev:full": "node scripts/dev-full.mjs",
+    "gen:api": "node scripts/gen-api-types.mjs",
     "build": "tsc && vp build",
     "preview": "vp preview",
     "prepare": "vp config"
@@ -15,13 +16,15 @@
   "dependencies": {
     "@tanstack/react-query": "^5.96.2",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "autoprefixer": "^10.4.27",
+    "openapi-typescript": "^7.13.0",
     "postcss": "^8.5.8",
     "tailwindcss": "^3.4.19",
     "typescript": "~5.9.3",
