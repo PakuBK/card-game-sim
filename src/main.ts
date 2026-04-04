@@ -15,6 +15,12 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
     <h1>Get started</h1>
     <p>Edit <code>src/main.ts</code> and save to test <code>HMR</code></p>
   </div>
+  <div>
+    <h2>Backend</h2>
+    <p>Health: <span id="backend-health">(loading)</span></p>
+    <button id="backend-ping" type="button" class="counter">Ping backend</button>
+    <pre id="backend-echo"></pre>
+  </div>
   <button id="counter" type="button" class="counter"></button>
 </section>
 
@@ -58,3 +64,43 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
 `;
 
 setupCounter(document.querySelector<HTMLButtonElement>("#counter")!);
+
+const backendHealthEl = document.querySelector<HTMLSpanElement>("#backend-health");
+const backendEchoEl = document.querySelector<HTMLPreElement>("#backend-echo");
+const backendPingBtn = document.querySelector<HTMLButtonElement>("#backend-ping");
+
+async function loadBackendHealth() {
+  if (!backendHealthEl) return;
+
+  try {
+    const res = await fetch("/api/health");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = (await res.json()) as { status: string; now: string };
+    backendHealthEl.textContent = `${data.status} (${data.now})`;
+  } catch (err) {
+    backendHealthEl.textContent = `error (${String(err)})`;
+  }
+}
+
+backendPingBtn?.addEventListener("click", async () => {
+  if (!backendEchoEl) return;
+
+  backendEchoEl.textContent = "(loading)";
+  try {
+    const res = await fetch("/api/echo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "hello from frontend",
+        payload: { at: new Date().toISOString() },
+      }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = (await res.json()) as unknown;
+    backendEchoEl.textContent = JSON.stringify(data, null, 2);
+  } catch (err) {
+    backendEchoEl.textContent = `error: ${String(err)}`;
+  }
+});
+
+void loadBackendHealth();
