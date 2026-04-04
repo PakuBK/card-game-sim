@@ -8,11 +8,34 @@ Minimal “first state” scaffold:
 
 ## Run locally
 
+### One command for both processes
+
+```powershell
+vp run dev:full
+```
+
+This starts the FastAPI backend and the Vite frontend together.
+
 ### 1) Backend (FastAPI)
 
 ```powershell
 C:/Users/paulk/AppData/Local/Microsoft/WindowsApps/python3.13.exe -m venv backend/.venv
 backend/.venv/Scripts/python -m pip install -r backend/requirements.txt
+backend/.venv/Scripts/python backend/run_dev.py
+```
+
+This launcher script starts Uvicorn with auto-reload on `127.0.0.1:8000`.
+Optional overrides:
+
+```powershell
+$env:BACKEND_HOST="127.0.0.1"
+$env:BACKEND_PORT="8001"
+backend/.venv/Scripts/python backend/run_dev.py
+```
+
+Equivalent direct Uvicorn command:
+
+```powershell
 backend/.venv/Scripts/python -m uvicorn backend.app.main:app --reload --port 8000
 ```
 

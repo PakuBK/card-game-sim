@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vp dev",
+    "dev:backend": "backend/.venv/Scripts/python backend/run_dev.py",
+    "dev:frontend": "vp dev",
+    "dev:full": "node scripts/dev-full.mjs",
     "build": "tsc && vp build",
     "preview": "vp preview",
     "prepare": "vp config"
