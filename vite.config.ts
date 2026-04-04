@@ -19,4 +19,7 @@ export default defineConfig({
     options: { typeAware: true, typeCheck: true },
     ignorePatterns: ["dist/**", "src/routeTree.gen.ts"],
   },
+  fmt: {
+    ignorePatterns: ["dist/**", "src/routeTree.gen.ts"],
+  },
 });
