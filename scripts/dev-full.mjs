@@ -59,7 +59,7 @@ process.on("SIGTERM", () => {
   process.exit(143);
 });
 
-Promise.all([
+void Promise.all([
   new Promise((resolve) => backend.on("exit", resolve)),
   new Promise((resolve) => frontend.on("exit", resolve)),
 ]).finally(() => {
