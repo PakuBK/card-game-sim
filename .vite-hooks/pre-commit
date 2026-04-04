@@ -1,18 +1,5 @@
 #!/usr/bin/env sh
 set -e
 
-# Keep generated OpenAPI TypeScript types up to date.
-if vp run gen:api; then
-	if vp fmt src/api/generated/openapi.ts --write; then
-		if ! git add src/api/generated/openapi.ts; then
-			echo "VITE+ - pre-commit: warning: failed to stage generated OpenAPI types (commit will continue)" >&2
-		fi
-	else
-		echo "VITE+ - pre-commit: warning: failed to format generated OpenAPI types (commit will continue)" >&2
-	fi
-else
-	echo "VITE+ - pre-commit: warning: skipped OpenAPI TS type generation (commit will continue)" >&2
-fi
-
 # Run repo checks on staged files.
 vp staged
