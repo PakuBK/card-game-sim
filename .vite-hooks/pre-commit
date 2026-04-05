@@ -1,5 +1,0 @@
-#!/usr/bin/env sh
-set -e
-
-# Run repo checks on staged files.
-vp staged

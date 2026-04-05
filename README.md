@@ -74,8 +74,6 @@ vp run gen:api
 
 This writes the generated types to `src/api/generated/openapi.ts`.
 
-Note: a Vite+ git `pre-commit` hook attempts to run `vp run gen:api` automatically and stage the updated generated file. If generation fails, it will warn and continue the commit.
-
 If `vp check` reports formatting issues after regeneration, run:
 
 ```powershell
