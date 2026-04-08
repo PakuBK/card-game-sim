@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.api.routes import router as api_router
 
-from .models import CardSummary, EchoRequest, EchoResponse, HealthResponse
 
 app = FastAPI(title="card-game-sim API", version="0.1.0")
 
@@ -24,21 +23,4 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-@app.get("/api/health", response_model=HealthResponse)
-def health() -> HealthResponse:
-    return HealthResponse(status="ok", now=datetime.now(timezone.utc))
-
-
-@app.get("/api/cards", response_model=list[CardSummary])
-def list_cards() -> list[CardSummary]:
-    return [
-        CardSummary(id="strike", name="Strike", cost=1),
-        CardSummary(id="guard", name="Guard", cost=1),
-        CardSummary(id="fireball", name="Fireball", cost=2),
-    ]
-
-
-@app.post("/api/echo", response_model=EchoResponse)
-def echo(payload: EchoRequest) -> EchoResponse:
-    return EchoResponse(received=payload)
+app.include_router(api_router)
