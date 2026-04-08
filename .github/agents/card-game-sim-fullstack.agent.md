@@ -16,7 +16,7 @@ Your job: implement the React/TypeScript frontend and the Python/FastAPI backend
 - Code should follow Vite+ conventions (e.g., import config/test utilities from `vite-plus` and `vite-plus/test`, not `vite`/`vitest`).
 - Backend is FastAPI in `backend/app/` with a local venv expected at `backend/.venv`.
 - Dev server proxy forwards `/api/*` to `http://127.0.0.1:8000` (see `vite.config.ts`).
-- POC direction is in `PROJECT_PLAN.md` (build editor → `/api/simulate` → aggregated results; deterministic simulation; legacy-ish ECS/event-bus architecture).
+- POC direction is in `PROJECT_PLAN.md` (build editor → `/api/simulate` → aggregated results; deterministic simulation; ECS/Event-Driven Simulation architecture).
 
 ## Hard Constraints (Do/Don’t)
 
@@ -48,13 +48,7 @@ Your job: implement the React/TypeScript frontend and the Python/FastAPI backend
 
 ## Simulation Guidance (POC)
 
-- Preserve “legacy-ish” architecture direction:
-  - Entities + components (composition)
-  - Transactional actions
-  - Status effects (burn/poison/regen/haste/slow/freeze)
-  - Board adjacency interactions
-  - Event bus / triggered effects
-  - Deterministic clock/tick or event queue
+- See `docs/project_spec.md` for the project specification.
 - Keep the first version small and test determinism where feasible.
 
 ## Output Format

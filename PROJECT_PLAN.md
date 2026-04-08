@@ -1,123 +1,136 @@
-# Card Build Simulator POC Plan
+# Bazaar Combat Simulation Project Plan
 
-## Goal
+## Purpose
 
-Build a proof-of-concept web app where users create a card build in a React frontend, submit it to a Python backend, and run a deterministic simulation that returns aggregated stats. The backend should preserve the legacy simulator architecture: ECS-style entities/components, transactional actions, status effects, board adjacency, and an event bus for reactive effects.
+Build a data-driven combat sandbox inspired by _The Bazaar_. The project is not a full game implementation. It is a theory-crafting tool where users define items, boards, and combat parameters as data, then run deterministic simulations to study outcomes and compare builds.
 
-## Recommended Stack
+## Current State
 
-- Frontend: React
-- Backend: Python with FastAPI
-- Validation: Pydantic on the backend, generated TypeScript types on the frontend
-- Deployment: Docker on a single VPS
+The repository currently contains the initial application scaffold:
 
-## Architecture Outline
+- A Vite+ React frontend shell
+- A FastAPI backend shell with dummy endpoints
+- Generated OpenAPI TypeScript bindings wired into the frontend
+- Local dev wiring for running frontend and backend together
+
+This is the starting point for the real simulation product. The next stage is to replace placeholder behavior with the actual combat model, editor workflows, and results pipeline.
+
+## Product Direction
+
+The long-term direction is a configurable combat simulator with three core capabilities:
+
+1. Define user-authored items as structured data
+2. Assemble boards and player setups visually in the frontend
+3. Execute deterministic combat simulations in the backend and return statistics
+
+The system should stay generic. Item behavior is not hardcoded as special cases in the backend. Instead, the engine interprets item definitions, triggers, effects, timers, and status interactions supplied by the frontend.
+
+## Architecture Direction
 
 ### Frontend
 
-- Single-screen React app
-- Card/item catalog panel
-- Build editor for selected cards/items and counts
-- Simulation controls for duration, iterations, and seed
-- Results panel for aggregated stats and distributions
-- Display validation errors returned by the API
+- React-based configuration workspace for item definitions, boards, and simulation settings
+- Visual editing for board layout, item placement, and player setup
+- Simulation controls for seed, run count, and duration or stop conditions
+- Results views for combat logs, aggregate stats, and distributions
+- Validation feedback surfaced from backend schema checks
 
 ### Backend
 
-- FastAPI HTTP API
-- Importable simulation package in Python
-- Deterministic simulation loop using a virtual clock
-- Seeded RNG for reproducible runs
-- Synchronous `/api/simulate` endpoint for the POC
+- Python FastAPI service that exposes the simulation API
+- Pydantic-backed request and response models
+- Importable simulation engine with deterministic execution
+- Seeded randomness for reproducible runs
+- Batch-friendly simulation entrypoints for repeated runs
 
-### Core Simulation Model
+### Simulation Model
 
-Preserve the legacy design instead of flattening it into generic game logic:
+The engine should follow a discrete-event approach:
 
-- Entity/component composition instead of hard-coded class hierarchies
-- Actions with conditions, costs, and effects
-- Centralized status effect handling
-- Board adjacency for item interactions
-- Event bus or observer pattern for triggered effects
-- Deterministic tick or event-queue based execution
+- Combat progresses by jumping from one scheduled event to the next
+- Item cooldowns use absolute trigger times
+- Status effects such as burn and poison schedule their own ticks
+- Timer modifiers like slow, haste, freeze, and charge force rescheduling when needed
+- Board adjacency matters for target selection and item interaction rules
 
-## POC Scope
+## Scope
 
-Start with the smallest useful port of the old simulator:
+The project scope is combat only. It should model the pieces needed for experimentation and balance testing:
 
-- Player entities
-- Items/cards
-- Cooldowns and charging
-- Ammo or resource gating
-- Status effects like burn, poison, regeneration, haste, slow, freeze
-- Board adjacency
-- Combat loop over a fixed time interval
+- Player health, shield, regeneration, and status effects
+- User-defined items with stats, runtime state, triggers, and effects
+- Board layouts with item size and adjacency rules
+- Damage, healing, shield generation, burn, poison, and related interactions
+- Timer-based item use and status ticking
+- Single-fight debug runs and batch statistical runs
 
-## Suggested Stats
+## Data and API Direction
 
-Return a compact summary such as:
+The backend should define the source-of-truth contracts and generate frontend types from them.
 
-- Total damage or score
-- Damage over time breakdown
-- Proc counts
-- Shield absorbed
-- HP remaining
-- Time-to-kill or failure/idle rate
-- Average, p50, and p95 values across runs
+Likely core models include:
 
-## Backend API
-
-### Endpoints
-
-- `GET /api/health`
-- `GET /api/cards` or `GET /api/items`
-- `POST /api/simulate`
-
-### Request Guardrails
-
-- Clamp duration and iteration count
-- Reject invalid configs with clear errors
-- Limit payload size
-- Add request timeout protection
-
-## Data Contracts
-
-Define backend models first and generate frontend types from OpenAPI:
-
-- `BuildConfig`
-- `EntityConfig` or `ItemConfig`
-- `SimulationParams`
+- `ItemDefinition`
+- `BoardConfig`
+- `PlayerConfig`
+- `SimulationRequest`
 - `SimulationResult`
 
-## Testing
+The API should stay compact and purpose-built for the simulator, with endpoints for health checks, catalog or schema discovery, and simulation execution.
 
-Focus tests where the architecture is fragile:
+## Metrics and Outputs
 
-- Determinism: same seed and config produce identical results
-- Legacy behavior fixtures: shield, poison, burn, freeze, cooldown, adjacency, triggered effects
-- API validation tests for bad payloads
+The simulator should return outputs that help users understand both single runs and repeated batches. Useful outputs include:
 
-## Packaging and Deployment
+- Win or loss outcome
+- Fight duration
+- Final health and shield values
+- Damage, healing, and status effect totals
+- Proc and trigger counts
+- Average, median, and percentile summaries across batch runs
 
-Use a single Docker container for the POC if possible:
+## Implementation Phases
 
-- FastAPI serves the built React assets
-- FastAPI also serves `/api/*`
-- Add `docker-compose.yml` for local and VPS deployment
-- Put HTTPS in front with Caddy or Nginx if needed
+### Phase 1: Contract and Scope
 
-## Implementation Order
+- Finalize the simulation primitives and supported status effects
+- Define the backend request and response models
+- Establish the JSON shape for user-defined items and boards
 
-1. Define the exact simulation scope and stats
-2. Port the legacy simulation model into Python modules
-3. Add FastAPI models and endpoints
-4. Build the React frontend around the API
-5. Add tests for determinism and key mechanics
-6. Package with Docker
-7. Deploy to the VPS
+### Phase 2: Core Engine
+
+- Implement the deterministic combat loop in Python
+- Add the event queue, timers, status ticks, and adjacency rules
+- Support a minimal but extensible item execution model
+
+### Phase 3: API and Frontend Integration
+
+- Replace dummy endpoints with real simulation routes
+- Generate frontend types from OpenAPI
+- Build the editor UI for item and board configuration
+
+### Phase 4: Debugging and Analysis UX
+
+- Add single-run inspection views and combat logs
+- Add batch run statistics and result comparisons
+- Improve validation and error reporting for malformed configurations
+
+### Phase 5: Scale and Packaging
+
+- Add regression tests for determinism and core mechanics
+- Optimize for repeated simulations and larger item sets
+- Package the app for straightforward local and VPS deployment
+
+## Quality Goals
+
+- Deterministic results for the same seed and input
+- Data-driven item behavior without backend special casing
+- Clear validation errors for invalid configs
+- Fast enough execution for repeated simulations
+- Small, understandable initial scope that can expand safely
 
 ## Notes
 
-- The legacy repository is on the `master` branch
-- The old simulator is a good source of architecture, behavior, and data model ideas
-- Keep the first version small and data-driven so the editor and simulation stay manageable
+- The project spec is the source of truth for the combat model and design constraints
+- The plan should stay broader than the spec and describe the project direction, not every mechanic in implementation detail
+- The immediate goal is to turn the current scaffold into a usable simulator foundation, then expand the engine and editor incrementally
