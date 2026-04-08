@@ -1,14 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { z } from "zod";
 
-import { getCards, getHealth, postEcho } from "../../api/endpoints";
-
-const EchoMessageSchema = z
-  .string()
-  .trim()
-  .min(1, "Message is required")
-  .max(200, "Message must be at most 200 characters");
+import { getHealth, getSimulationSchema, postSimulate } from "../../api/endpoints";
 
 function formatIso(iso: string | undefined): string {
   if (!iso) return "";
@@ -24,19 +17,57 @@ export default function DebugPage() {
     refetchInterval: 30_000,
   });
 
-  const cardsQuery = useQuery({
-    queryKey: ["cards"],
-    queryFn: getCards,
+  const schemaQuery = useQuery({
+    queryKey: ["simulation-schema"],
+    queryFn: getSimulationSchema,
   });
 
-  const [echoMessage, setEchoMessage] = useState("hello from frontend");
-  const [echoValidationError, setEchoValidationError] = useState<string | null>(null);
-
-  const echoMutation = useMutation({
+  const simulateMutation = useMutation({
     mutationFn: async () =>
-      postEcho({
-        message: echoMessage,
-        payload: { at: new Date().toISOString() },
+      postSimulate({
+        seed: 1337,
+        runs: 3,
+        max_time_seconds: 20,
+        max_events: 5000,
+        item_definitions: [
+          {
+            id: "katana",
+            name: "Katana",
+            size: 1,
+            cooldown_seconds: 1,
+            effects: [
+              {
+                type: "damage",
+                target: "opponent",
+                magnitude: 5,
+              },
+            ],
+          },
+        ],
+        players: [
+          {
+            player_id: "player_a",
+            stats: { max_health: 30, start_shield: 0, regeneration_per_second: 1 },
+            board: {
+              width: 10,
+              placements: [
+                { item_instance_id: "a-katana", item_definition_id: "katana", start_slot: 0 },
+              ],
+            },
+            initial_statuses: [],
+          },
+          {
+            player_id: "player_b",
+            stats: { max_health: 30, start_shield: 0, regeneration_per_second: 0 },
+            board: {
+              width: 10,
+              placements: [
+                { item_instance_id: "b-katana", item_definition_id: "katana", start_slot: 0 },
+              ],
+            },
+            initial_statuses: [],
+          },
+        ],
       }),
   });
 
@@ -52,7 +83,7 @@ export default function DebugPage() {
         <header className="flex flex-col gap-2">
           <h1 className="text-2xl font-semibold">Card Game Sim</h1>
           <p className="text-sm opacity-80">
-            Minimal React UI wired to the dummy FastAPI backend (via Vite proxy).
+            Debug view wired to the Phase 1 simulation contract and minimal event queue backend.
           </p>
         </header>
 
@@ -75,77 +106,42 @@ export default function DebugPage() {
         </section>
 
         <section className="rounded-md border p-4">
-          <h2 className="text-lg font-medium">Cards</h2>
+          <h2 className="text-lg font-medium">Scope Contract</h2>
           <div className="mt-3">
-            {cardsQuery.isPending ? (
+            {schemaQuery.isPending ? (
               <div className="text-sm">loading…</div>
-            ) : cardsQuery.isError ? (
-              <div className="text-sm">error: {cardsQuery.error.message}</div>
+            ) : schemaQuery.isError ? (
+              <div className="text-sm">error: {schemaQuery.error.message}</div>
             ) : (
-              <ul className="flex flex-col gap-2">
-                {cardsQuery.data.map((c) => (
-                  <li
-                    key={c.id}
-                    className="flex items-center justify-between rounded border px-3 py-2"
-                  >
-                    <div className="flex flex-col">
-                      <span className="font-medium">{c.name}</span>
-                      <span className="text-xs opacity-70">id: {c.id}</span>
-                    </div>
-                    <div className="text-sm">cost: {c.cost}</div>
-                  </li>
-                ))}
-              </ul>
+              <pre className="overflow-auto text-xs">
+                {JSON.stringify(schemaQuery.data.scope, null, 2)}
+              </pre>
             )}
           </div>
         </section>
 
         <section className="rounded-md border p-4">
-          <h2 className="text-lg font-medium">Echo</h2>
+          <h2 className="text-lg font-medium">Simulation</h2>
           <div className="mt-3 flex flex-col gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-sm font-medium">Message</span>
-              <input
-                className="rounded border px-3 py-2"
-                value={echoMessage}
-                onChange={(e) => {
-                  setEchoMessage(e.target.value);
-                  setEchoValidationError(null);
-                }}
-              />
-              {echoValidationError ? (
-                <span className="text-sm text-red-600">{echoValidationError}</span>
-              ) : null}
-            </label>
-
             <div className="flex items-center gap-3">
               <button
                 type="button"
                 className="rounded border px-3 py-2 text-sm"
-                onClick={() => {
-                  const parsed = EchoMessageSchema.safeParse(echoMessage);
-                  if (!parsed.success) {
-                    setEchoValidationError(parsed.error.issues[0]?.message ?? "Invalid message");
-                    return;
-                  }
-
-                  setEchoValidationError(null);
-                  echoMutation.mutate();
-                }}
-                disabled={echoMutation.isPending}
+                onClick={() => simulateMutation.mutate()}
+                disabled={simulateMutation.isPending}
               >
-                {echoMutation.isPending ? "Sending…" : "Send"}
+                {simulateMutation.isPending ? "Running…" : "Run Sample Sim"}
               </button>
-              {echoMutation.isError ? (
-                <span className="text-sm">error: {echoMutation.error.message}</span>
+              {simulateMutation.isError ? (
+                <span className="text-sm">error: {simulateMutation.error.message}</span>
               ) : null}
-              {echoMutation.isSuccess ? <span className="text-sm">ok</span> : null}
+              {simulateMutation.isSuccess ? <span className="text-sm">ok</span> : null}
             </div>
 
             <div className="rounded border p-3">
               <div className="text-xs font-medium opacity-70">Response</div>
               <pre className="mt-2 overflow-auto text-xs">
-                {echoMutation.data ? JSON.stringify(echoMutation.data, null, 2) : "(none)"}
+                {simulateMutation.data ? JSON.stringify(simulateMutation.data, null, 2) : "(none)"}
               </pre>
             </div>
           </div>

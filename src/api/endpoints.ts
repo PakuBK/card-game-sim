@@ -2,20 +2,20 @@ import { fetchJson } from "./http";
 import type { components } from "./generated/openapi";
 
 export type HealthResponse = components["schemas"]["HealthResponse"];
-export type CardSummary = components["schemas"]["CardSummary"];
-export type EchoRequest = components["schemas"]["EchoRequest"];
-export type EchoResponse = components["schemas"]["EchoResponse"];
+export type SimulationSchemaResponse = components["schemas"]["SimulationSchemaResponse"];
+export type SimulationRequest = components["schemas"]["SimulationRequest"];
+export type SimulationResponse = components["schemas"]["SimulationResponse"];
 
 export function getHealth(): Promise<HealthResponse> {
   return fetchJson<HealthResponse>("/api/health");
 }
 
-export function getCards(): Promise<CardSummary[]> {
-  return fetchJson<CardSummary[]>("/api/cards");
+export function getSimulationSchema(): Promise<SimulationSchemaResponse> {
+  return fetchJson<SimulationSchemaResponse>("/api/simulation/schema");
 }
 
-export function postEcho(payload: EchoRequest): Promise<EchoResponse> {
-  return fetchJson<EchoResponse>("/api/echo", {
+export function postSimulate(payload: SimulationRequest): Promise<SimulationResponse> {
+  return fetchJson<SimulationResponse>("/api/simulate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),

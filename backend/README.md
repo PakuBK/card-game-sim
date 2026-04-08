@@ -46,11 +46,11 @@ FastAPI auto-generates OpenAPI docs from the current routes and Pydantic models.
 
 ## Current Endpoints
 
-The API is still a scaffold while the combat engine is being built.
+The API now includes the Phase 1 contract and scope endpoints.
 
 - `GET /api/health`
-- `GET /api/cards`
-- `POST /api/echo`
+- `GET /api/simulation/schema`
+- `POST /api/simulate`
 
 ## Direction
 
