@@ -44,6 +44,39 @@ FastAPI auto-generates OpenAPI docs from the current routes and Pydantic models.
 - Swagger UI: `http://127.0.0.1:8000/docs`
 - ReDoc: `http://127.0.0.1:8000/redoc`
 
+## Debug Scenarios
+
+For targeted item-status debugging, run deterministic scenarios with timeline output:
+
+```bash
+vp run debug:item-status
+```
+
+Run a single scenario:
+
+```bash
+vp run debug:item-status -- --scenario slow_basic
+```
+
+Show full combat log entries:
+
+```bash
+vp run debug:item-status -- --scenario freeze_basic --full-log --event-limit 200
+```
+
+Show internal timer reschedule math (old/new timing, remaining cooldown, charge):
+
+```bash
+vp run debug:item-status --scenario freeze_basic --verbose-timers
+```
+
+Available scenarios:
+
+- `slow_basic`
+- `charge_basic`
+- `freeze_basic`
+- `flight_halving`
+
 ## Current Endpoints
 
 The API now includes the Phase 1 contract and scope endpoints.

@@ -7,6 +7,11 @@ from statistics import mean, median
 from app.core.simulation_board import build_runtime_boards, resolve_item_definition
 from app.core.simulation_event_handlers import (
     handle_burn_tick_event,
+    handle_item_charge_event,
+    handle_item_flight_end_event,
+    handle_item_flight_start_event,
+    handle_item_modifier_end_event,
+    handle_item_modifier_start_event,
     handle_item_use_event,
     handle_poison_tick_event,
     handle_regen_tick_event,
@@ -16,6 +21,15 @@ from app.core.simulation_status import apply_initial_statuses
 from app.core.simulation_types import (
     BURN_TICK_INTERVAL_SECONDS,
     EVENT_BURN_TICK,
+    EVENT_ITEM_CHARGE,
+    EVENT_ITEM_FLIGHT_END,
+    EVENT_ITEM_FLIGHT_START,
+    EVENT_ITEM_FREEZE_END,
+    EVENT_ITEM_FREEZE_START,
+    EVENT_ITEM_HASTE_END,
+    EVENT_ITEM_HASTE_START,
+    EVENT_ITEM_SLOW_END,
+    EVENT_ITEM_SLOW_START,
     EVENT_ITEM_USE,
     EVENT_POISON_TICK,
     EVENT_REGEN_TICK,
@@ -204,6 +218,31 @@ def simulate_single_run(request: SimulationRequest, run_index: int) -> Simulatio
 
         alive_at_time = {player_id for player_id, player in players.items() if player.health > 0}
         for same_time_event in same_time_events:
+            if same_time_event.stale:
+                continue
+
+            if same_time_event.event_type == EVENT_ITEM_USE:
+                runtime_item = runtime_item_lookup[same_time_event.target_id or ""]
+                if (
+                    runtime_item.current_cooldown_modifier == 0.0
+                    and runtime_item.freeze_end_time is not None
+                    and current_time <= runtime_item.freeze_end_time
+                ):
+                    freeze_applied_at = runtime_item.freeze_applied_at or current_time
+                    remaining_cooldown = max(0.0, same_time_event.time - freeze_applied_at)
+                    heapq.heappush(
+                        queue,
+                        make_event(
+                            time=runtime_item.freeze_end_time + remaining_cooldown,
+                            sequence=sequence,
+                            event_type=EVENT_ITEM_USE,
+                            source_id=same_time_event.source_id,
+                            target_id=same_time_event.target_id,
+                            source_item_instance_id=same_time_event.source_item_instance_id,
+                        ),
+                    )
+                    continue
+
             state_before_event = snapshot_player_states(players)
             metrics.total_events_processed += 1
             log_target_id = same_time_event.target_id
@@ -240,6 +279,82 @@ def simulate_single_run(request: SimulationRequest, run_index: int) -> Simulatio
                     current_time=current_time,
                     queue=queue,
                     sequence=sequence,
+                )
+            elif same_time_event.event_type == EVENT_ITEM_CHARGE:
+                handle_item_charge_event(
+                    event=same_time_event,
+                    runtime_item_lookup=runtime_item_lookup,
+                    current_time=current_time,
+                    queue=queue,
+                    sequence=sequence,
+                )
+            elif same_time_event.event_type == EVENT_ITEM_SLOW_START:
+                handle_item_modifier_start_event(
+                    event=same_time_event,
+                    runtime_item_lookup=runtime_item_lookup,
+                    modifier_type="slow",
+                    current_time=current_time,
+                    queue=queue,
+                    sequence=sequence,
+                )
+            elif same_time_event.event_type == EVENT_ITEM_SLOW_END:
+                handle_item_modifier_end_event(
+                    event=same_time_event,
+                    runtime_item_lookup=runtime_item_lookup,
+                    modifier_type="slow",
+                    current_time=current_time,
+                    queue=queue,
+                    sequence=sequence,
+                )
+            elif same_time_event.event_type == EVENT_ITEM_HASTE_START:
+                handle_item_modifier_start_event(
+                    event=same_time_event,
+                    runtime_item_lookup=runtime_item_lookup,
+                    modifier_type="haste",
+                    current_time=current_time,
+                    queue=queue,
+                    sequence=sequence,
+                )
+            elif same_time_event.event_type == EVENT_ITEM_HASTE_END:
+                handle_item_modifier_end_event(
+                    event=same_time_event,
+                    runtime_item_lookup=runtime_item_lookup,
+                    modifier_type="haste",
+                    current_time=current_time,
+                    queue=queue,
+                    sequence=sequence,
+                )
+            elif same_time_event.event_type == EVENT_ITEM_FREEZE_START:
+                handle_item_modifier_start_event(
+                    event=same_time_event,
+                    runtime_item_lookup=runtime_item_lookup,
+                    modifier_type="freeze",
+                    current_time=current_time,
+                    queue=queue,
+                    sequence=sequence,
+                )
+            elif same_time_event.event_type == EVENT_ITEM_FREEZE_END:
+                handle_item_modifier_end_event(
+                    event=same_time_event,
+                    runtime_item_lookup=runtime_item_lookup,
+                    modifier_type="freeze",
+                    current_time=current_time,
+                    queue=queue,
+                    sequence=sequence,
+                )
+            elif same_time_event.event_type == EVENT_ITEM_FLIGHT_START:
+                handle_item_flight_start_event(
+                    event=same_time_event,
+                    runtime_item_lookup=runtime_item_lookup,
+                    current_time=current_time,
+                    queue=queue,
+                    sequence=sequence,
+                )
+            elif same_time_event.event_type == EVENT_ITEM_FLIGHT_END:
+                handle_item_flight_end_event(
+                    event=same_time_event,
+                    runtime_item_lookup=runtime_item_lookup,
+                    current_time=current_time,
                 )
             elif same_time_event.event_type == EVENT_REGEN_TICK:
                 handle_regen_tick_event(

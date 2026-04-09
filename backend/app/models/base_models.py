@@ -40,11 +40,20 @@ class EffectType(str, Enum):
     SHIELD = "shield"
     APPLY_BURN = "apply_burn"
     APPLY_POISON = "apply_poison"
+    APPLY_ITEM_SLOW = "apply_item_slow"
+    APPLY_ITEM_HASTE = "apply_item_haste"
+    APPLY_ITEM_FREEZE = "apply_item_freeze"
+    APPLY_ITEM_CHARGE = "apply_item_charge"
+    APPLY_ITEM_FLIGHT = "apply_item_flight"
 
 
 class EffectTarget(str, Enum):
     SELF = "self"
     OPPONENT = "opponent"
+    SELF_ITEM = "self_item"
+    OPPONENT_ITEM = "opponent_item"
+    ENEMY_ADJACENT = "enemy_adjacent"
+    ENEMY_RANDOM = "enemy_random"
 
 
 class RunStopReason(str, Enum):
@@ -63,6 +72,11 @@ class ScopeLimits(BaseModel):
             EffectType.SHIELD,
             EffectType.APPLY_BURN,
             EffectType.APPLY_POISON,
+            EffectType.APPLY_ITEM_SLOW,
+            EffectType.APPLY_ITEM_HASTE,
+            EffectType.APPLY_ITEM_FREEZE,
+            EffectType.APPLY_ITEM_CHARGE,
+            EffectType.APPLY_ITEM_FLIGHT,
         ]
     )
     percentile_set: list[int] = Field(default_factory=lambda: [50, 90, 95])

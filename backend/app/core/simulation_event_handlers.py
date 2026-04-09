@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import heapq
 from itertools import count
+from typing import Any
 
-from app.core.simulation_board import resolve_effect_target
+from app.core.simulation_board import resolve_effect_target, select_deterministic_target_item
+from app.core.simulation_item_modifiers import (
+    apply_modifier_duration_halving,
+)
 from app.core.simulation_metrics import (
     increment_counter,
     record_damage_to_opponent,
@@ -23,6 +27,15 @@ from app.core.simulation_status import (
 from app.core.simulation_types import (
     BURN_TICK_INTERVAL_SECONDS,
     EVENT_BURN_TICK,
+    EVENT_ITEM_CHARGE,
+    EVENT_ITEM_FLIGHT_END,
+    EVENT_ITEM_FLIGHT_START,
+    EVENT_ITEM_FREEZE_END,
+    EVENT_ITEM_FREEZE_START,
+    EVENT_ITEM_HASTE_END,
+    EVENT_ITEM_HASTE_START,
+    EVENT_ITEM_SLOW_END,
+    EVENT_ITEM_SLOW_START,
     EVENT_ITEM_USE,
     EVENT_POISON_TICK,
     EVENT_REGEN_TICK,
@@ -34,7 +47,453 @@ from app.core.simulation_types import (
     RuntimePlayer,
     make_event,
 )
-from app.models.base_models import ItemRunMetrics, RunMetrics
+from app.models.base_models import EffectTarget, ItemRunMetrics, RunMetrics
+
+
+SPEED_MODIFIER_END_EVENTS = {
+    "slow": EVENT_ITEM_SLOW_END,
+    "haste": EVENT_ITEM_HASTE_END,
+    "freeze": EVENT_ITEM_FREEZE_END,
+}
+
+SPEED_MODIFIER_VALUES = {
+    "slow": 0.5,
+    "haste": 2.0,
+    "freeze": 0.0,
+}
+
+_MODIFIER_TIMER_TRACE: list[dict[str, Any]] = []
+
+
+def clear_modifier_timer_trace() -> None:
+    _MODIFIER_TIMER_TRACE.clear()
+
+
+def get_modifier_timer_trace() -> list[dict[str, Any]]:
+    return list(_MODIFIER_TIMER_TRACE)
+
+
+def _append_modifier_timer_trace(entry: dict[str, Any]) -> None:
+    _MODIFIER_TIMER_TRACE.append(entry)
+
+
+def _resolve_item_target_id(
+    *,
+    source_item: RuntimeItem,
+    effect_target: EffectTarget,
+    board_by_player: dict[str, RuntimeBoard],
+) -> str | None:
+    target_value = effect_target.value
+    if target_value in {EffectTarget.SELF.value, EffectTarget.SELF_ITEM.value}:
+        return source_item.instance_id
+
+    target_player_id = "player_b" if source_item.owner_id == "player_a" else "player_a"
+
+    if target_value in {
+        EffectTarget.OPPONENT.value,
+        EffectTarget.OPPONENT_ITEM.value,
+        EffectTarget.ENEMY_ADJACENT.value,
+        EffectTarget.ENEMY_RANDOM.value,
+    }:
+        return select_deterministic_target_item(
+            source_player_id=source_item.owner_id,
+            source_item_instance_id=source_item.instance_id,
+            target_player_id=target_player_id,
+            board_by_player=board_by_player,
+        )
+
+    return None
+
+
+def _find_pending_item_use_event(queue: list[Event], runtime_item: RuntimeItem) -> Event | None:
+    earliest: Event | None = None
+    for queued_event in queue:
+        if queued_event.stale:
+            continue
+        if queued_event.event_type != EVENT_ITEM_USE:
+            continue
+        if queued_event.target_id != runtime_item.instance_id:
+            continue
+        if queued_event.source_item_instance_id != runtime_item.instance_id:
+            continue
+        if earliest is None or queued_event.time < earliest.time:
+            earliest = queued_event
+    return earliest
+
+
+def _calculate_remaining_normal_time(
+    *,
+    pending_event_time: float,
+    current_time: float,
+    old_modifier: float,
+    freeze_end_time: float | None,
+) -> float:
+    if old_modifier == 0.0:
+        if freeze_end_time is None:
+            return max(0.0, pending_event_time - current_time)
+        return max(0.0, pending_event_time - freeze_end_time)
+
+    # pending_event_time is in wall-clock time under old_modifier speed.
+    # Convert to base remaining cooldown by multiplying by speed multiplier.
+    return max(0.0, (pending_event_time - current_time) * old_modifier)
+
+
+def _mark_pending_events_stale(
+    queue: list[Event],
+    *,
+    target_item_id: str,
+    event_types: set[str],
+) -> None:
+    for queued_event in queue:
+        if queued_event.stale:
+            continue
+        if queued_event.target_id != target_item_id:
+            continue
+        if queued_event.event_type in event_types:
+            queued_event.stale = True
+
+
+def handle_item_charge_event(
+    *,
+    event: Event,
+    runtime_item_lookup: dict[str, RuntimeItem],
+    current_time: float,
+    queue: list[Event],
+    sequence: count,
+) -> None:
+    target_item = runtime_item_lookup[event.target_id or ""]
+    pending_event = _find_pending_item_use_event(queue, target_item)
+    if pending_event is None:
+        return
+
+    charge_amount = event.effect_magnitude or 0.0
+    if charge_amount <= 0:
+        return
+
+    pending_event.stale = True
+    old_event_time = pending_event.time
+    remaining_cooldown = max(0.0, pending_event.time - current_time - charge_amount)
+    new_event_time = current_time + remaining_cooldown
+
+    heapq.heappush(
+        queue,
+        make_event(
+            time=new_event_time,
+            sequence=sequence,
+            event_type=EVENT_ITEM_USE,
+            source_id=target_item.owner_id,
+            target_id=target_item.instance_id,
+            source_item_instance_id=target_item.instance_id,
+        ),
+    )
+
+    _append_modifier_timer_trace(
+        {
+            "time": round(current_time, 6),
+            "operation": "charge",
+            "item_id": target_item.instance_id,
+            "old_modifier": target_item.current_cooldown_modifier,
+            "new_modifier": target_item.current_cooldown_modifier,
+            "pending_event_before": round(old_event_time, 6),
+            "remaining_before": round(max(0.0, old_event_time - current_time), 6),
+            "charge_amount": round(charge_amount, 6),
+            "pending_event_after": round(new_event_time, 6),
+        }
+    )
+
+
+def handle_item_modifier_start_event(
+    *,
+    event: Event,
+    runtime_item_lookup: dict[str, RuntimeItem],
+    modifier_type: str,
+    current_time: float,
+    queue: list[Event],
+    sequence: count,
+) -> None:
+    target_item = runtime_item_lookup[event.target_id or ""]
+    pending_event = _find_pending_item_use_event(queue, target_item)
+    old_modifier = target_item.current_cooldown_modifier
+    prior_freeze_end = target_item.freeze_end_time
+    prior_pending_time = pending_event.time if pending_event is not None else None
+
+    duration_seconds = event.effect_magnitude or 0.0
+    is_flying = target_item.flight_end_time is not None and target_item.flight_end_time > current_time
+    effective_duration = apply_modifier_duration_halving(duration_seconds, is_flying)
+
+    _mark_pending_events_stale(
+        queue,
+        target_item_id=target_item.instance_id,
+        event_types=set(SPEED_MODIFIER_END_EVENTS.values()),
+    )
+
+    if modifier_type == "slow":
+        new_modifier = SPEED_MODIFIER_VALUES[modifier_type]
+        target_item.slow_end_time = current_time + effective_duration
+        target_item.haste_end_time = None
+        target_item.freeze_end_time = None
+        target_item.freeze_applied_at = None
+        target_item.current_cooldown_modifier = new_modifier
+
+        if pending_event is not None and old_modifier != new_modifier:
+            pending_event.stale = True
+            remaining_normal = _calculate_remaining_normal_time(
+                pending_event_time=pending_event.time,
+                current_time=current_time,
+                old_modifier=old_modifier,
+                freeze_end_time=prior_freeze_end,
+            )
+            new_event_time = current_time + (remaining_normal / new_modifier)
+            heapq.heappush(
+                queue,
+                make_event(
+                    time=new_event_time,
+                    sequence=sequence,
+                    event_type=EVENT_ITEM_USE,
+                    source_id=target_item.owner_id,
+                    target_id=target_item.instance_id,
+                    source_item_instance_id=target_item.instance_id,
+                ),
+            )
+            _append_modifier_timer_trace(
+                {
+                    "time": round(current_time, 6),
+                    "operation": "modifier_start",
+                    "modifier": modifier_type,
+                    "item_id": target_item.instance_id,
+                    "old_modifier": old_modifier,
+                    "new_modifier": new_modifier,
+                    "duration": round(effective_duration, 6),
+                    "pending_event_before": round(pending_event.time, 6),
+                    "remaining_normal": round(remaining_normal, 6),
+                    "pending_event_after": round(new_event_time, 6),
+                }
+            )
+
+    elif modifier_type == "haste":
+        new_modifier = SPEED_MODIFIER_VALUES[modifier_type]
+        target_item.haste_end_time = current_time + effective_duration
+        target_item.slow_end_time = None
+        target_item.freeze_end_time = None
+        target_item.freeze_applied_at = None
+        target_item.current_cooldown_modifier = new_modifier
+
+        if pending_event is not None and old_modifier != new_modifier:
+            pending_event.stale = True
+            remaining_normal = _calculate_remaining_normal_time(
+                pending_event_time=pending_event.time,
+                current_time=current_time,
+                old_modifier=old_modifier,
+                freeze_end_time=prior_freeze_end,
+            )
+            new_event_time = current_time + (remaining_normal / new_modifier)
+            heapq.heappush(
+                queue,
+                make_event(
+                    time=new_event_time,
+                    sequence=sequence,
+                    event_type=EVENT_ITEM_USE,
+                    source_id=target_item.owner_id,
+                    target_id=target_item.instance_id,
+                    source_item_instance_id=target_item.instance_id,
+                ),
+            )
+            _append_modifier_timer_trace(
+                {
+                    "time": round(current_time, 6),
+                    "operation": "modifier_start",
+                    "modifier": modifier_type,
+                    "item_id": target_item.instance_id,
+                    "old_modifier": old_modifier,
+                    "new_modifier": new_modifier,
+                    "duration": round(effective_duration, 6),
+                    "pending_event_before": round(pending_event.time, 6),
+                    "remaining_normal": round(remaining_normal, 6),
+                    "pending_event_after": round(new_event_time, 6),
+                }
+            )
+
+    elif modifier_type == "freeze":
+        target_item.freeze_end_time = current_time + effective_duration
+        target_item.slow_end_time = None
+        target_item.haste_end_time = None
+        target_item.freeze_applied_at = current_time
+        target_item.current_cooldown_modifier = SPEED_MODIFIER_VALUES[modifier_type]
+
+        if pending_event is not None:
+            pending_event.stale = True
+            remaining_normal = _calculate_remaining_normal_time(
+                pending_event_time=pending_event.time,
+                current_time=current_time,
+                old_modifier=old_modifier,
+                freeze_end_time=prior_freeze_end,
+            )
+            new_event_time = current_time + effective_duration + remaining_normal
+            heapq.heappush(
+                queue,
+                make_event(
+                    time=new_event_time,
+                    sequence=sequence,
+                    event_type=EVENT_ITEM_USE,
+                    source_id=target_item.owner_id,
+                    target_id=target_item.instance_id,
+                    source_item_instance_id=target_item.instance_id,
+                ),
+            )
+            _append_modifier_timer_trace(
+                {
+                    "time": round(current_time, 6),
+                    "operation": "modifier_start",
+                    "modifier": modifier_type,
+                    "item_id": target_item.instance_id,
+                    "old_modifier": old_modifier,
+                    "new_modifier": 0.0,
+                    "duration": round(effective_duration, 6),
+                    "pending_event_before": round(pending_event.time, 6),
+                    "remaining_normal": round(remaining_normal, 6),
+                    "pending_event_after": round(new_event_time, 6),
+                }
+            )
+
+    else:
+        return
+
+    end_event_type = SPEED_MODIFIER_END_EVENTS[modifier_type]
+    heapq.heappush(
+        queue,
+        make_event(
+            time=current_time + effective_duration,
+            sequence=sequence,
+            event_type=end_event_type,
+            source_id=event.source_id,
+            target_id=target_item.instance_id,
+            source_item_instance_id=event.source_item_instance_id,
+            effect_magnitude=duration_seconds,
+        ),
+    )
+
+
+def handle_item_modifier_end_event(
+    *,
+    event: Event,
+    runtime_item_lookup: dict[str, RuntimeItem],
+    modifier_type: str,
+    current_time: float,
+    queue: list[Event],
+    sequence: count,
+) -> None:
+    target_item = runtime_item_lookup[event.target_id or ""]
+    pending_event = _find_pending_item_use_event(queue, target_item)
+    old_modifier = target_item.current_cooldown_modifier
+
+    if modifier_type == "slow" and target_item.slow_end_time is not None and target_item.slow_end_time > current_time:
+        return
+    if modifier_type == "haste" and target_item.haste_end_time is not None and target_item.haste_end_time > current_time:
+        return
+    if modifier_type == "freeze" and target_item.freeze_end_time is not None and target_item.freeze_end_time > current_time:
+        return
+
+    if modifier_type == "freeze":
+        target_item.freeze_end_time = None
+        target_item.freeze_applied_at = None
+        target_item.current_cooldown_modifier = 1.0
+        _append_modifier_timer_trace(
+            {
+                "time": round(current_time, 6),
+                "operation": "modifier_end",
+                "modifier": modifier_type,
+                "item_id": target_item.instance_id,
+                "old_modifier": old_modifier,
+                "new_modifier": 1.0,
+                "pending_event_before": round(pending_event.time, 6) if pending_event else None,
+                "pending_event_after": round(pending_event.time, 6) if pending_event else None,
+            }
+        )
+        return
+
+    target_item.slow_end_time = None
+    target_item.haste_end_time = None
+    target_item.freeze_end_time = None
+    target_item.freeze_applied_at = None
+    target_item.current_cooldown_modifier = 1.0
+
+    if pending_event is not None:
+        pending_event.stale = True
+        remaining_normal = _calculate_remaining_normal_time(
+            pending_event_time=pending_event.time,
+            current_time=current_time,
+            old_modifier=old_modifier,
+            freeze_end_time=None,
+        )
+        new_event_time = current_time + remaining_normal
+        heapq.heappush(
+            queue,
+            make_event(
+                time=new_event_time,
+                sequence=sequence,
+                event_type=EVENT_ITEM_USE,
+                source_id=target_item.owner_id,
+                target_id=target_item.instance_id,
+                source_item_instance_id=target_item.instance_id,
+            ),
+        )
+        _append_modifier_timer_trace(
+            {
+                "time": round(current_time, 6),
+                "operation": "modifier_end",
+                "modifier": modifier_type,
+                "item_id": target_item.instance_id,
+                "old_modifier": old_modifier,
+                "new_modifier": 1.0,
+                "pending_event_before": round(pending_event.time, 6),
+                "remaining_normal": round(remaining_normal, 6),
+                "pending_event_after": round(new_event_time, 6),
+            }
+        )
+
+
+def handle_item_flight_start_event(
+    *,
+    event: Event,
+    runtime_item_lookup: dict[str, RuntimeItem],
+    current_time: float,
+    queue: list[Event],
+    sequence: count,
+) -> None:
+    target_item = runtime_item_lookup[event.target_id or ""]
+    target_item.flight_end_time = current_time + (event.effect_magnitude or 0.0)
+
+    _mark_pending_events_stale(
+        queue,
+        target_item_id=target_item.instance_id,
+        event_types={EVENT_ITEM_FLIGHT_END},
+    )
+
+    heapq.heappush(
+        queue,
+        make_event(
+            time=target_item.flight_end_time,
+            sequence=sequence,
+            event_type=EVENT_ITEM_FLIGHT_END,
+            source_id=event.source_id,
+            target_id=target_item.instance_id,
+            source_item_instance_id=event.source_item_instance_id,
+            effect_magnitude=event.effect_magnitude,
+        ),
+    )
+
+
+def handle_item_flight_end_event(
+    *,
+    event: Event,
+    runtime_item_lookup: dict[str, RuntimeItem],
+    current_time: float,
+) -> None:
+    target_item = runtime_item_lookup[event.target_id or ""]
+    if target_item.flight_end_time is not None and target_item.flight_end_time > current_time:
+        return
+
+    target_item.flight_end_time = None
 
 
 def resolve_item_use(
@@ -53,6 +512,7 @@ def resolve_item_use(
     target_player_id: str | None = None
 
     for effect in item.effects:
+        effect_type = effect.type.value
         target_player, effect_target_id = resolve_effect_target(
             source_item=runtime_item,
             effect_target=effect.target,
@@ -63,9 +523,9 @@ def resolve_item_use(
         if target_player_id is None:
             target_player_id = target_player.player_id
         if item_metric is not None:
-            increment_counter(item_metric.events_triggered, effect.type.value)
+            increment_counter(item_metric.events_triggered, effect_type)
 
-        if effect.type.value == "damage":
+        if effect_type == "damage":
             dealt = apply_damage(target_player, effect.magnitude)
             owner.total_damage_done += dealt
             record_damage_to_opponent(
@@ -80,15 +540,15 @@ def resolve_item_use(
                 fallback_item_metric=item_metric,
             )
 
-        elif effect.type.value == "heal":
+        elif effect_type == "heal":
             healed = apply_heal(target_player, effect.magnitude)
             owner.total_healing_done += healed
             apply_heal_status_reduction(target_player, healed)
 
-        elif effect.type.value == "shield":
+        elif effect_type == "shield":
             target_player.shield += effect.magnitude
 
-        elif effect.type.value == "apply_burn":
+        elif effect_type == "apply_burn":
             track_status_metrics(owner_metrics.status_effects_applied.burn, effect.magnitude)
             target_metrics = select_player_metrics(metrics, target_player.player_id)
             track_status_metrics(target_metrics.status_effects_received.burn, effect.magnitude)
@@ -105,7 +565,7 @@ def resolve_item_use(
                 sequence=sequence,
             )
 
-        elif effect.type.value == "apply_poison":
+        elif effect_type == "apply_poison":
             track_status_metrics(owner_metrics.status_effects_applied.poison, effect.magnitude)
             target_metrics = select_player_metrics(metrics, target_player.player_id)
             track_status_metrics(target_metrics.status_effects_received.poison, effect.magnitude)
@@ -121,6 +581,71 @@ def resolve_item_use(
                 queue=queue,
                 sequence=sequence,
             )
+
+        elif effect_type in {"apply_item_slow", "apply_item_haste", "apply_item_freeze"}:
+            target_item_id = _resolve_item_target_id(
+                source_item=runtime_item,
+                effect_target=effect.target,
+                board_by_player=board_by_player,
+            )
+            if target_item_id is not None:
+                event_type = {
+                    "apply_item_slow": EVENT_ITEM_SLOW_START,
+                    "apply_item_haste": EVENT_ITEM_HASTE_START,
+                    "apply_item_freeze": EVENT_ITEM_FREEZE_START,
+                }[effect_type]
+                heapq.heappush(
+                    queue,
+                    make_event(
+                        time=current_time,
+                        sequence=sequence,
+                        event_type=event_type,
+                        source_id=owner.player_id,
+                        target_id=target_item_id,
+                        source_item_instance_id=runtime_item.instance_id,
+                        effect_magnitude=effect.magnitude,
+                    ),
+                )
+
+        elif effect_type == "apply_item_flight":
+            target_item_id = _resolve_item_target_id(
+                source_item=runtime_item,
+                effect_target=effect.target,
+                board_by_player=board_by_player,
+            )
+            if target_item_id is not None:
+                heapq.heappush(
+                    queue,
+                    make_event(
+                        time=current_time,
+                        sequence=sequence,
+                        event_type=EVENT_ITEM_FLIGHT_START,
+                        source_id=owner.player_id,
+                        target_id=target_item_id,
+                        source_item_instance_id=runtime_item.instance_id,
+                        effect_magnitude=effect.magnitude,
+                    ),
+                )
+
+        elif effect_type == "apply_item_charge":
+            target_item_id = _resolve_item_target_id(
+                source_item=runtime_item,
+                effect_target=effect.target,
+                board_by_player=board_by_player,
+            )
+            if target_item_id is not None:
+                heapq.heappush(
+                    queue,
+                    make_event(
+                        time=current_time,
+                        sequence=sequence,
+                        event_type=EVENT_ITEM_CHARGE,
+                        source_id=owner.player_id,
+                        target_id=target_item_id,
+                        source_item_instance_id=runtime_item.instance_id,
+                        effect_magnitude=effect.magnitude,
+                    ),
+                )
 
     return target_player_id
 
@@ -160,10 +685,17 @@ def handle_item_use_event(
             sequence,
         )
         log_target_id = resolved_target_id or runtime_item.instance_id
+        cooldown_modifier = runtime_item.current_cooldown_modifier
+        if cooldown_modifier <= 0:
+            next_use_time = current_time + runtime_item.definition.cooldown_seconds
+        else:
+            next_use_time = current_time + (
+                runtime_item.definition.cooldown_seconds / cooldown_modifier
+            )
         heapq.heappush(
             queue,
             make_event(
-                time=current_time + runtime_item.definition.cooldown_seconds,
+                time=next_use_time,
                 sequence=sequence,
                 event_type=EVENT_ITEM_USE,
                 source_id=owner.player_id,

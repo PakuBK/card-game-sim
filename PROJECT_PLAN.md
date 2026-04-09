@@ -6,23 +6,29 @@ Build a data-driven combat sandbox inspired by _The Bazaar_. The project is not 
 
 ## Execution Snapshot
 
-- Current active phase: Phase 2 Core Engine
-- Detailed phase tracker: `docs/phase2_execution_plan.md`
+- Current active phase: Phase 3 API and Frontend Integration
+- Detailed phase trackers:
+  - `docs/phase2_execution_plan.md`
+  - `docs/phase3_item_status_effects_plan.md`
 - Quick status:
   - Phase 1 Contract and Scope: complete
-  - Phase 2 Core Engine: in progress
-  - Phase 3 to Phase 5: not started
+  - Phase 2 Core Engine: complete
+  - Phase 2.5 Item Status Effects Extension: complete
+  - Phase 3 API and Frontend Integration: in progress
+  - Phase 4 to Phase 5: not started
 
 ## Current State
 
-The repository currently contains the initial application scaffold:
+The repository now contains a working deterministic combat simulation foundation:
 
-- A Vite+ React frontend shell
-- A FastAPI backend shell with dummy endpoints
+- FastAPI simulation endpoints using Pydantic contracts
+- Discrete-event combat engine with deterministic ordering
+- Player status effects (burn, poison, regen)
+- Item status effects (slow, haste, freeze, charge, flight) with timer rescheduling
 - Generated OpenAPI TypeScript bindings wired into the frontend
-- Local dev wiring for running frontend and backend together
+- Scenario debugging utilities for item-status timing traces
 
-This is the starting point for the real simulation product. The next stage is to replace placeholder behavior with the actual combat model, editor workflows, and results pipeline.
+The next stage is to expand API and frontend integration for robust editing workflows, schema-driven configuration UX, and richer analysis surfaces.
 
 ## Product Direction
 
