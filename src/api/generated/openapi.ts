@@ -4,380 +4,484 @@
  */
 
 export interface paths {
-  "/api/health": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/api/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Health */
+        get: operations["health_api_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** Health */
-    get: operations["health_api_health_get"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/simulation/schema": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/api/simulation/schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Simulation Schema */
+        get: operations["simulation_schema_api_simulation_schema_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** Simulation Schema */
-    get: operations["simulation_schema_api_simulation_schema_get"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/simulate": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/api/simulate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Simulate */
+        post: operations["simulate_api_simulate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /** Simulate */
-    post: operations["simulate_api_simulate_post"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-  schemas: {
-    /** BatchSummary */
-    BatchSummary: {
-      /** Run Count */
-      run_count: number;
-      /** Player A Win Rate */
-      player_a_win_rate: number;
-      /** Player B Win Rate */
-      player_b_win_rate: number;
-      /** Draw Rate */
-      draw_rate: number;
-      duration_seconds: components["schemas"]["NumericSummary"];
+    schemas: {
+        /** ApiError */
+        ApiError: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "validation_error" | "simulation_input_error" | "simulation_runtime_error";
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Details */
+            details?: components["schemas"]["ApiErrorDetail"][];
+        };
+        /** ApiErrorDetail */
+        ApiErrorDetail: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Location */
+            location?: (string | number)[] | null;
+        };
+        /** ApiErrorResponse */
+        ApiErrorResponse: {
+            error: components["schemas"]["ApiError"];
+        };
+        /** BatchSummary */
+        BatchSummary: {
+            /** Run Count */
+            run_count: number;
+            /** Player A Win Rate */
+            player_a_win_rate: number;
+            /** Player B Win Rate */
+            player_b_win_rate: number;
+            /** Draw Rate */
+            draw_rate: number;
+            duration_seconds: components["schemas"]["NumericSummary"];
+        };
+        /** BoardConfig */
+        BoardConfig: {
+            /**
+             * Width
+             * @default 10
+             */
+            width: number;
+            /** Placements */
+            placements?: components["schemas"]["BoardItemPlacement"][];
+        };
+        /** BoardItemPlacement */
+        BoardItemPlacement: {
+            /** Item Instance Id */
+            item_instance_id: string;
+            /** Item Definition Id */
+            item_definition_id: string;
+            /** Start Slot */
+            start_slot: number;
+        };
+        /** DamageBreakdown */
+        DamageBreakdown: {
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /**
+             * Direct
+             * @default 0
+             */
+            direct: number;
+            /**
+             * Burn
+             * @default 0
+             */
+            burn: number;
+            /**
+             * Poison
+             * @default 0
+             */
+            poison: number;
+        };
+        /**
+         * EffectTarget
+         * @enum {string}
+         */
+        EffectTarget: "self" | "opponent";
+        /**
+         * EffectType
+         * @enum {string}
+         */
+        EffectType: "damage" | "heal" | "shield" | "apply_burn" | "apply_poison";
+        /** HealthResponse */
+        HealthResponse: {
+            /**
+             * Status
+             * @default ok
+             */
+            status: string;
+            /**
+             * Now
+             * Format: date-time
+             */
+            now: string;
+        };
+        /** InitialStatus */
+        InitialStatus: {
+            type: components["schemas"]["StatusType"];
+            /** Value */
+            value: number;
+        };
+        /** ItemDefinition */
+        ItemDefinition: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Size */
+            size: number;
+            /** Cooldown Seconds */
+            cooldown_seconds: number;
+            /** Initial Delay Seconds */
+            initial_delay_seconds?: number | null;
+            /** Effects */
+            effects: components["schemas"]["ItemEffect"][];
+        };
+        /** ItemEffect */
+        ItemEffect: {
+            type: components["schemas"]["EffectType"];
+            target: components["schemas"]["EffectTarget"];
+            /** Magnitude */
+            magnitude: number;
+        };
+        /** ItemRunMetrics */
+        ItemRunMetrics: {
+            /** Item Instance Id */
+            item_instance_id: string;
+            /** Item Definition Id */
+            item_definition_id: string;
+            /**
+             * Owner Player Id
+             * @enum {string}
+             */
+            owner_player_id: "player_a" | "player_b";
+            damage_done?: components["schemas"]["DamageBreakdown"];
+            /** Events Triggered */
+            events_triggered?: {
+                [key: string]: number;
+            };
+            status_effects_applied?: components["schemas"]["StatusMetrics"];
+            /** Status Effects Received */
+            status_effects_received?: {
+                [key: string]: number;
+            };
+        };
+        /** NumericSummary */
+        NumericSummary: {
+            /** Average */
+            average: number;
+            /** Median */
+            median: number;
+            /** P50 */
+            p50: number;
+            /** P90 */
+            p90: number;
+            /** P95 */
+            p95: number;
+        };
+        /** PlayerConfig */
+        PlayerConfig: {
+            /**
+             * Player Id
+             * @enum {string}
+             */
+            player_id: "player_a" | "player_b";
+            stats: components["schemas"]["PlayerStats"];
+            board: components["schemas"]["BoardConfig"];
+            /** Initial Statuses */
+            initial_statuses?: components["schemas"]["InitialStatus"][];
+        };
+        /** PlayerEventMetrics */
+        PlayerEventMetrics: {
+            /** Item Uses */
+            item_uses: number;
+            /** Burn Ticks */
+            burn_ticks: number;
+            /** Poison Ticks */
+            poison_ticks: number;
+            /** Regen Ticks */
+            regen_ticks: number;
+            damage_to_opponent?: components["schemas"]["DamageBreakdown"];
+            status_effects_received?: components["schemas"]["StatusMetrics"];
+            status_effects_applied?: components["schemas"]["StatusMetrics"];
+            /** Item Metrics */
+            item_metrics?: components["schemas"]["ItemRunMetrics"][];
+        };
+        /** PlayerRunState */
+        PlayerRunState: {
+            /**
+             * Player Id
+             * @enum {string}
+             */
+            player_id: "player_a" | "player_b";
+            /** Health */
+            health: number;
+            /** Shield */
+            shield: number;
+            /** Burn */
+            burn: number;
+            /** Poison */
+            poison: number;
+            /** Total Damage Done */
+            total_damage_done: number;
+            /** Total Healing Done */
+            total_healing_done: number;
+        };
+        /** PlayerStats */
+        PlayerStats: {
+            /** Max Health */
+            max_health: number;
+            /** Start Health */
+            start_health?: number | null;
+            /**
+             * Start Shield
+             * @default 0
+             */
+            start_shield: number;
+            /**
+             * Regeneration Per Second
+             * @default 0
+             */
+            regeneration_per_second: number;
+        };
+        /** RunMetrics */
+        RunMetrics: {
+            /** Total Events Processed */
+            total_events_processed: number;
+            player_a: components["schemas"]["PlayerEventMetrics"];
+            player_b: components["schemas"]["PlayerEventMetrics"];
+        };
+        /** ScopeLimits */
+        ScopeLimits: {
+            /** Statuses */
+            statuses?: components["schemas"]["StatusType"][];
+            /** Trigger Modes */
+            trigger_modes?: string[];
+            /** Effect Types */
+            effect_types?: components["schemas"]["EffectType"][];
+            /** Percentile Set */
+            percentile_set?: number[];
+        };
+        /** SimulationRequest */
+        SimulationRequest: {
+            /** Seed */
+            seed: number;
+            /**
+             * Runs
+             * @default 1
+             */
+            runs: number;
+            /**
+             * Max Time Seconds
+             * @default 60
+             */
+            max_time_seconds: number;
+            /**
+             * Max Events
+             * @default 10000
+             */
+            max_events: number;
+            /** Item Definitions */
+            item_definitions: components["schemas"]["ItemDefinition"][];
+            /** Players */
+            players: components["schemas"]["PlayerConfig"][];
+        };
+        /** SimulationResponse */
+        SimulationResponse: {
+            scope?: components["schemas"]["ScopeLimits"];
+            /** Runs */
+            runs: components["schemas"]["SimulationRunResult"][];
+            summary: components["schemas"]["BatchSummary"];
+        };
+        /** SimulationRunResult */
+        SimulationRunResult: {
+            /** Run Index */
+            run_index: number;
+            /** Seed Used */
+            seed_used: number;
+            /**
+             * Winner Player Id
+             * @enum {string}
+             */
+            winner_player_id: "player_a" | "player_b" | "draw";
+            /** Duration Seconds */
+            duration_seconds: number;
+            /** Players */
+            players: components["schemas"]["PlayerRunState"][];
+            metrics: components["schemas"]["RunMetrics"];
+        };
+        /** SimulationSchemaResponse */
+        SimulationSchemaResponse: {
+            scope?: components["schemas"]["ScopeLimits"];
+        };
+        /** StatusEffectMetrics */
+        StatusEffectMetrics: {
+            /**
+             * Applications
+             * @default 0
+             */
+            applications: number;
+            /**
+             * Total Value
+             * @default 0
+             */
+            total_value: number;
+        };
+        /** StatusMetrics */
+        StatusMetrics: {
+            burn?: components["schemas"]["StatusEffectMetrics"];
+            poison?: components["schemas"]["StatusEffectMetrics"];
+        };
+        /**
+         * StatusType
+         * @enum {string}
+         */
+        StatusType: "burn" | "poison";
     };
-    /** BoardConfig */
-    BoardConfig: {
-      /**
-       * Width
-       * @default 10
-       */
-      width: number;
-      /** Placements */
-      placements?: components["schemas"]["BoardItemPlacement"][];
-    };
-    /** BoardItemPlacement */
-    BoardItemPlacement: {
-      /** Item Instance Id */
-      item_instance_id: string;
-      /** Item Definition Id */
-      item_definition_id: string;
-      /** Start Slot */
-      start_slot: number;
-    };
-    /**
-     * EffectTarget
-     * @enum {string}
-     */
-    EffectTarget: "self" | "opponent";
-    /**
-     * EffectType
-     * @enum {string}
-     */
-    EffectType: "damage" | "heal" | "shield" | "apply_burn" | "apply_poison";
-    /** HTTPValidationError */
-    HTTPValidationError: {
-      /** Detail */
-      detail?: components["schemas"]["ValidationError"][];
-    };
-    /** HealthResponse */
-    HealthResponse: {
-      /**
-       * Status
-       * @default ok
-       */
-      status: string;
-      /**
-       * Now
-       * Format: date-time
-       */
-      now: string;
-    };
-    /** InitialStatus */
-    InitialStatus: {
-      type: components["schemas"]["StatusType"];
-      /** Value */
-      value: number;
-    };
-    /** ItemDefinition */
-    ItemDefinition: {
-      /** Id */
-      id: string;
-      /** Name */
-      name: string;
-      /** Size */
-      size: number;
-      /** Cooldown Seconds */
-      cooldown_seconds: number;
-      /** Initial Delay Seconds */
-      initial_delay_seconds?: number | null;
-      /** Effects */
-      effects: components["schemas"]["ItemEffect"][];
-    };
-    /** ItemEffect */
-    ItemEffect: {
-      type: components["schemas"]["EffectType"];
-      target: components["schemas"]["EffectTarget"];
-      /** Magnitude */
-      magnitude: number;
-    };
-    /** NumericSummary */
-    NumericSummary: {
-      /** Average */
-      average: number;
-      /** Median */
-      median: number;
-      /** P50 */
-      p50: number;
-      /** P90 */
-      p90: number;
-      /** P95 */
-      p95: number;
-    };
-    /** PlayerConfig */
-    PlayerConfig: {
-      /**
-       * Player Id
-       * @enum {string}
-       */
-      player_id: "player_a" | "player_b";
-      stats: components["schemas"]["PlayerStats"];
-      board: components["schemas"]["BoardConfig"];
-      /** Initial Statuses */
-      initial_statuses?: components["schemas"]["InitialStatus"][];
-    };
-    /** PlayerRunState */
-    PlayerRunState: {
-      /**
-       * Player Id
-       * @enum {string}
-       */
-      player_id: "player_a" | "player_b";
-      /** Health */
-      health: number;
-      /** Shield */
-      shield: number;
-      /** Burn */
-      burn: number;
-      /** Poison */
-      poison: number;
-      /** Total Damage Done */
-      total_damage_done: number;
-      /** Total Healing Done */
-      total_healing_done: number;
-    };
-    /** PlayerStats */
-    PlayerStats: {
-      /** Max Health */
-      max_health: number;
-      /** Start Health */
-      start_health?: number | null;
-      /**
-       * Start Shield
-       * @default 0
-       */
-      start_shield: number;
-      /**
-       * Regeneration Per Second
-       * @default 0
-       */
-      regeneration_per_second: number;
-    };
-    /** RunMetrics */
-    RunMetrics: {
-      /** Total Events Processed */
-      total_events_processed: number;
-      /** Total Item Uses */
-      total_item_uses: number;
-      /** Burn Ticks */
-      burn_ticks: number;
-      /** Poison Ticks */
-      poison_ticks: number;
-      /** Regen Ticks */
-      regen_ticks: number;
-    };
-    /** ScopeLimits */
-    ScopeLimits: {
-      /** Statuses */
-      statuses?: components["schemas"]["StatusType"][];
-      /** Trigger Modes */
-      trigger_modes?: string[];
-      /** Effect Types */
-      effect_types?: components["schemas"]["EffectType"][];
-      /** Percentile Set */
-      percentile_set?: number[];
-    };
-    /** SimulationRequest */
-    SimulationRequest: {
-      /** Seed */
-      seed: number;
-      /**
-       * Runs
-       * @default 1
-       */
-      runs: number;
-      /**
-       * Max Time Seconds
-       * @default 60
-       */
-      max_time_seconds: number;
-      /**
-       * Max Events
-       * @default 10000
-       */
-      max_events: number;
-      /** Item Definitions */
-      item_definitions: components["schemas"]["ItemDefinition"][];
-      /** Players */
-      players: components["schemas"]["PlayerConfig"][];
-    };
-    /** SimulationResponse */
-    SimulationResponse: {
-      scope?: components["schemas"]["ScopeLimits"];
-      /** Runs */
-      runs: components["schemas"]["SimulationRunResult"][];
-      summary: components["schemas"]["BatchSummary"];
-    };
-    /** SimulationRunResult */
-    SimulationRunResult: {
-      /** Run Index */
-      run_index: number;
-      /** Seed Used */
-      seed_used: number;
-      /**
-       * Winner Player Id
-       * @enum {string}
-       */
-      winner_player_id: "player_a" | "player_b" | "draw";
-      /** Duration Seconds */
-      duration_seconds: number;
-      /** Players */
-      players: components["schemas"]["PlayerRunState"][];
-      metrics: components["schemas"]["RunMetrics"];
-    };
-    /** SimulationSchemaResponse */
-    SimulationSchemaResponse: {
-      scope?: components["schemas"]["ScopeLimits"];
-    };
-    /**
-     * StatusType
-     * @enum {string}
-     */
-    StatusType: "burn" | "poison";
-    /** ValidationError */
-    ValidationError: {
-      /** Location */
-      loc: (string | number)[];
-      /** Message */
-      msg: string;
-      /** Error Type */
-      type: string;
-    };
-  };
-  responses: never;
-  parameters: never;
-  requestBodies: never;
-  headers: never;
-  pathItems: never;
+    responses: never;
+    parameters: never;
+    requestBodies: never;
+    headers: never;
+    pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-  health_api_health_get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    health_api_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
     };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
+    simulation_schema_api_simulation_schema_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        content: {
-          "application/json": components["schemas"]["HealthResponse"];
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimulationSchemaResponse"];
+                };
+            };
         };
-      };
     };
-  };
-  simulation_schema_api_simulation_schema_get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    simulate_api_simulate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SimulationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimulationResponse"];
+                };
+            };
+            /** @description Invalid simulation configuration. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request validation failed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Unexpected simulation runtime error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
     };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["SimulationSchemaResponse"];
-        };
-      };
-    };
-  };
-  simulate_api_simulate_post: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["SimulationRequest"];
-      };
-    };
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["SimulationResponse"];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"];
-        };
-      };
-    };
-  };
 }

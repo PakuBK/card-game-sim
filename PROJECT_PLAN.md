@@ -4,6 +4,15 @@
 
 Build a data-driven combat sandbox inspired by _The Bazaar_. The project is not a full game implementation. It is a theory-crafting tool where users define items, boards, and combat parameters as data, then run deterministic simulations to study outcomes and compare builds.
 
+## Execution Snapshot
+
+- Current active phase: Phase 2 Core Engine
+- Detailed phase tracker: `docs/phase2_execution_plan.md`
+- Quick status:
+  - Phase 1 Contract and Scope: complete
+  - Phase 2 Core Engine: in progress
+  - Phase 3 to Phase 5: not started
+
 ## Current State
 
 The repository currently contains the initial application scaffold:

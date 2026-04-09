@@ -845,6 +845,27 @@ Typical outputs:
 
 This allows users to analyze **strategy effectiveness**.
 
+### Simulation Metrics Foundation
+
+To support future visualization and analysis workflows, each simulation run should expose structured metrics with stable keys.
+
+Required baseline telemetry:
+
+- Damage done per item (per item instance, with direct and status-damage breakdown)
+- Events triggered by each item (for example `used`, `apply_burn`, `apply_poison`, `burn_tick`)
+- Status effects received per player
+- Status effects applied per player and by source item
+- Status effects received per item (groundwork field for item statuses such as slow, haste, freeze)
+- Damage applied to the opponent as a total
+- Damage applied to the opponent split into direct, burn, and poison parts
+
+Design notes:
+
+- Metrics are part of simulation output contracts and must remain deterministic for identical payloads and seeds.
+- Metric schemas should be additive and backward-compatible where practical to avoid frontend drift.
+- Item-level metric keys should stay stable and machine-friendly to support later chart pipelines.
+- Item-received status metrics are intentionally scaffolded now and populate when item-level status mechanics (slow/haste/freeze) are implemented.
+
 ---
 
 # 8. Performance Considerations

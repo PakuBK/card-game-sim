@@ -68,6 +68,133 @@ The `/api/simulate` route returns a structured error envelope for:
 - Simulation input/runtime contract errors (`400`)
 - Unexpected runtime failures (`500`)
 
+## Metrics Contract
+
+Each simulation run returns structured metrics designed for later visualization and analysis. Metrics are split by player and itemized per board item.
+
+### Example Response Structure
+
+```json
+{
+  "runs": [
+    {
+      "run_index": 0,
+      "winner_player_id": "player_a",
+      "duration_seconds": 5.5,
+      "metrics": {
+        "total_events_processed": 47,
+        "player_a": {
+          "item_uses": 5,
+          "burn_ticks": 3,
+          "poison_ticks": 0,
+          "regen_ticks": 5,
+          "damage_to_opponent": {
+            "total": 25.0,
+            "direct": 20.0,
+            "burn": 5.0,
+            "poison": 0.0
+          },
+          "status_effects_applied": {
+            "burn": { "applications": 1, "total_value": 5.0 },
+            "poison": { "applications": 0, "total_value": 0.0 }
+          },
+          "status_effects_received": {
+            "burn": { "applications": 0, "total_value": 0.0 },
+            "poison": { "applications": 0, "total_value": 0.0 }
+          },
+          "item_metrics": [
+            {
+              "item_instance_id": "a-katana",
+              "item_definition_id": "katana",
+              "owner_player_id": "player_a",
+              "damage_done": {
+                "total": 25.0,
+                "direct": 20.0,
+                "burn": 5.0,
+                "poison": 0.0
+              },
+              "events_triggered": {
+                "used": 5,
+                "damage": 5,
+                "apply_burn": 1,
+                "burn_tick": 3
+              },
+              "status_effects_applied": {
+                "burn": { "applications": 1, "total_value": 5.0 },
+                "poison": { "applications": 0, "total_value": 0.0 }
+              },
+              "status_effects_received": {}
+            }
+          ]
+        },
+        "player_b": {
+          "item_uses": 4,
+          "burn_ticks": 0,
+          "poison_ticks": 0,
+          "regen_ticks": 5,
+          "damage_to_opponent": {
+            "total": 20.0,
+            "direct": 20.0,
+            "burn": 0.0,
+            "poison": 0.0
+          },
+          "status_effects_applied": {
+            "burn": { "applications": 0, "total_value": 0.0 },
+            "poison": { "applications": 0, "total_value": 0.0 }
+          },
+          "status_effects_received": {
+            "burn": { "applications": 1, "total_value": 5.0 },
+            "poison": { "applications": 0, "total_value": 0.0 }
+          },
+          "item_metrics": [
+            {
+              "item_instance_id": "b-katana",
+              "item_definition_id": "katana",
+              "owner_player_id": "player_b",
+              "damage_done": {
+                "total": 20.0,
+                "direct": 20.0,
+                "burn": 0.0,
+                "poison": 0.0
+              },
+              "events_triggered": {
+                "used": 4,
+                "damage": 4
+              },
+              "status_effects_applied": {
+                "burn": { "applications": 0, "total_value": 0.0 },
+                "poison": { "applications": 0, "total_value": 0.0 }
+              },
+              "status_effects_received": {}
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
+```
+
+### Key Metric Fields
+
+**Per-Player Metrics:**
+
+- `item_uses`: Count of item activations by the player
+- `burn_ticks`, `poison_ticks`, `regen_ticks`: Count of status/regen events affecting the player
+- `damage_to_opponent`: Total, direct, burn, and poison damage dealt (split for future visualization)
+- `status_effects_applied`: Burn and poison applications initiated by the player (count + total value)
+- `status_effects_received`: Burn and poison received by the player (count + total value)
+- `item_metrics`: Itemized breakdown by board instance
+
+**Per-Item Metrics:**
+
+- `damage_done`: Total and split damage attributed to this item instance
+- `events_triggered`: Dictionary of event counts (e.g., `used`, `damage`, `apply_burn`, `burn_tick`)
+- `status_effects_applied`: Status applications originating from this item
+- `status_effects_received`: Placeholder for item-level statuses (populated when item status mechanics like slow/haste are added)
+
+These metrics are deterministic for identical seeds and payloads, and remain stable across runs to support regression testing and visualization pipelines.
+
 ## Shared Types
 
 Frontend API types are generated from the FastAPI OpenAPI schema.

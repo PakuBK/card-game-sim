@@ -141,12 +141,48 @@ class PlayerRunState(BaseModel):
     total_healing_done: float
 
 
-class RunMetrics(BaseModel):
-    total_events_processed: int
-    total_item_uses: int
+class DamageBreakdown(BaseModel):
+    total: float = 0.0
+    direct: float = 0.0
+    burn: float = 0.0
+    poison: float = 0.0
+
+
+class StatusEffectMetrics(BaseModel):
+    applications: int = 0
+    total_value: float = 0.0
+
+
+class StatusMetrics(BaseModel):
+    burn: StatusEffectMetrics = Field(default_factory=StatusEffectMetrics)
+    poison: StatusEffectMetrics = Field(default_factory=StatusEffectMetrics)
+
+
+class ItemRunMetrics(BaseModel):
+    item_instance_id: str
+    item_definition_id: str
+    owner_player_id: Literal["player_a", "player_b"]
+    damage_done: DamageBreakdown = Field(default_factory=DamageBreakdown)
+    events_triggered: dict[str, int] = Field(default_factory=dict)
+    status_effects_applied: StatusMetrics = Field(default_factory=StatusMetrics)
+    status_effects_received: dict[str, int] = Field(default_factory=dict)
+
+
+class PlayerEventMetrics(BaseModel):
+    item_uses: int
     burn_ticks: int
     poison_ticks: int
     regen_ticks: int
+    damage_to_opponent: DamageBreakdown = Field(default_factory=DamageBreakdown)
+    status_effects_received: StatusMetrics = Field(default_factory=StatusMetrics)
+    status_effects_applied: StatusMetrics = Field(default_factory=StatusMetrics)
+    item_metrics: list[ItemRunMetrics] = Field(default_factory=list)
+
+
+class RunMetrics(BaseModel):
+    total_events_processed: int
+    player_a: PlayerEventMetrics
+    player_b: PlayerEventMetrics
 
 
 class SimulationRunResult(BaseModel):

@@ -106,6 +106,154 @@ class SimulationContractTests(unittest.TestCase):
 
         self.assertEqual(result_1.model_dump(), result_2.model_dump())
 
+    def test_simultaneous_lethal_item_uses_resolve_to_draw(self) -> None:
+        payload = sample_request_payload()
+        payload["runs"] = 1
+        payload["item_definitions"] = [
+            {
+                "id": "burst",
+                "name": "Burst",
+                "size": 1,
+                "cooldown_seconds": 1.0,
+                "effects": [
+                    {
+                        "type": "damage",
+                        "target": "opponent",
+                        "magnitude": 10,
+                    }
+                ],
+            }
+        ]
+        payload["players"][0]["stats"] = {"max_health": 10}
+        payload["players"][1]["stats"] = {"max_health": 10}
+        payload["players"][0]["initial_statuses"] = []
+        payload["players"][1]["initial_statuses"] = []
+        payload["players"][0]["board"]["placements"] = [
+            {
+                "item_instance_id": "a1",
+                "item_definition_id": "burst",
+                "start_slot": 0,
+            }
+        ]
+        payload["players"][1]["board"]["placements"] = [
+            {
+                "item_instance_id": "b1",
+                "item_definition_id": "burst",
+                "start_slot": 0,
+            }
+        ]
+
+        request = SimulationRequest.model_validate(payload)
+        result = run_simulation(request)
+        run = result.runs[0]
+
+        self.assertEqual(run.winner_player_id, "draw")
+        self.assertEqual(run.duration_seconds, 1.0)
+        self.assertEqual(run.players[0].health, 0.0)
+        self.assertEqual(run.players[1].health, 0.0)
+        self.assertEqual(run.metrics.player_a.item_uses, 1)
+        self.assertEqual(run.metrics.player_b.item_uses, 1)
+
+    def test_same_time_poison_tick_is_processed_before_regen_tick(self) -> None:
+        payload = sample_request_payload()
+        payload["runs"] = 1
+        payload["max_time_seconds"] = 3
+        payload["item_definitions"] = [
+            {
+                "id": "placeholder",
+                "name": "Placeholder",
+                "size": 1,
+                "cooldown_seconds": 99,
+                "effects": [
+                    {
+                        "type": "heal",
+                        "target": "self",
+                        "magnitude": 1,
+                    }
+                ],
+            }
+        ]
+        payload["players"][0]["stats"] = {
+            "max_health": 1,
+            "regeneration_per_second": 1,
+        }
+        payload["players"][1]["stats"] = {"max_health": 10}
+        payload["players"][0]["initial_statuses"] = [{"type": "poison", "value": 1}]
+        payload["players"][1]["initial_statuses"] = []
+        payload["players"][0]["board"]["placements"] = []
+        payload["players"][1]["board"]["placements"] = []
+
+        request = SimulationRequest.model_validate(payload)
+        result = run_simulation(request)
+        run = result.runs[0]
+
+        self.assertEqual(run.winner_player_id, "player_b")
+        self.assertEqual(run.duration_seconds, 1.0)
+        self.assertEqual(run.players[0].health, 0.0)
+        self.assertEqual(run.metrics.player_a.poison_ticks, 1)
+        self.assertEqual(run.metrics.player_a.regen_ticks, 1)
+        self.assertEqual(run.metrics.player_b.poison_ticks, 0)
+        self.assertEqual(run.metrics.player_b.regen_ticks, 0)
+
+    def test_metrics_include_item_event_status_and_damage_breakdowns(self) -> None:
+        payload = sample_request_payload()
+        payload["runs"] = 1
+        payload["max_time_seconds"] = 1.0
+        payload["item_definitions"] = [
+            {
+                "id": "burner",
+                "name": "Burner",
+                "size": 1,
+                "cooldown_seconds": 99,
+                "initial_delay_seconds": 0,
+                "effects": [
+                    {
+                        "type": "damage",
+                        "target": "opponent",
+                        "magnitude": 3,
+                    },
+                    {
+                        "type": "apply_burn",
+                        "target": "opponent",
+                        "magnitude": 2,
+                    },
+                ],
+            }
+        ]
+        payload["players"][0]["board"]["placements"] = [
+            {
+                "item_instance_id": "a-burner",
+                "item_definition_id": "burner",
+                "start_slot": 0,
+            }
+        ]
+        payload["players"][1]["board"]["placements"] = []
+        payload["players"][0]["initial_statuses"] = []
+        payload["players"][1]["initial_statuses"] = []
+
+        request = SimulationRequest.model_validate(payload)
+        result = run_simulation(request)
+        run = result.runs[0]
+
+        self.assertEqual(run.metrics.player_a.item_uses, 1)
+        self.assertEqual(run.metrics.player_a.damage_to_opponent.direct, 3.0)
+        self.assertEqual(run.metrics.player_a.damage_to_opponent.burn, 3.0)
+        self.assertEqual(run.metrics.player_a.damage_to_opponent.total, 6.0)
+        self.assertEqual(run.metrics.player_a.status_effects_applied.burn.applications, 1)
+        self.assertEqual(run.metrics.player_a.status_effects_applied.burn.total_value, 2.0)
+        self.assertEqual(run.metrics.player_b.status_effects_received.burn.applications, 1)
+        self.assertEqual(run.metrics.player_b.status_effects_received.burn.total_value, 2.0)
+
+        item_metric = run.metrics.player_a.item_metrics[0]
+        self.assertEqual(item_metric.item_instance_id, "a-burner")
+        self.assertEqual(item_metric.damage_done.direct, 3.0)
+        self.assertEqual(item_metric.damage_done.burn, 3.0)
+        self.assertEqual(item_metric.damage_done.total, 6.0)
+        self.assertEqual(item_metric.events_triggered["used"], 1)
+        self.assertEqual(item_metric.events_triggered["damage"], 1)
+        self.assertEqual(item_metric.events_triggered["apply_burn"], 1)
+        self.assertEqual(item_metric.events_triggered["burn_tick"], 2)
+
     def test_api_route_contracts_and_openapi(self) -> None:
         scope_response = simulation_schema()
         self.assertEqual(scope_response.scope.trigger_modes, ["timed_use_only"])
