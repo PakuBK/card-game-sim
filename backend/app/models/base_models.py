@@ -12,6 +12,23 @@ class HealthResponse(BaseModel):
     now: datetime
 
 
+class ApiErrorDetail(BaseModel):
+    code: str
+    message: str
+    location: list[str | int] | None = None
+
+
+class ApiError(BaseModel):
+    type: Literal["validation_error", "simulation_input_error", "simulation_runtime_error"]
+    code: str
+    message: str
+    details: list[ApiErrorDetail] = Field(default_factory=list)
+
+
+class ApiErrorResponse(BaseModel):
+    error: ApiError
+
+
 class StatusType(str, Enum):
     BURN = "burn"
     POISON = "poison"

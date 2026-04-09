@@ -1,10 +1,22 @@
 from __future__ import annotations
 
+from pathlib import Path
+import sys
 import unittest
 
+from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
 from app.api.routes import simulate, simulation_schema
+from app.core.errors import (
+    SimulationInputError,
+    build_api_error_response,
+    build_validation_error_response,
+)
 from app.main import app
 from app.models.base_models import SimulationRequest, SimulationSchemaResponse
 from app.core.simulation import run_simulation
@@ -108,6 +120,44 @@ class SimulationContractTests(unittest.TestCase):
         openapi_paths = app.openapi().get("paths", {})
         self.assertIn("/api/simulation/schema", openapi_paths)
         self.assertIn("/api/simulate", openapi_paths)
+
+    def test_simulation_input_error_code_on_invalid_board_layout(self) -> None:
+        payload = sample_request_payload()
+        payload["players"][0]["board"]["placements"] = [
+            {"item_instance_id": "a1", "item_definition_id": "jab", "start_slot": 0},
+            {"item_instance_id": "a2", "item_definition_id": "jab", "start_slot": 0},
+        ]
+
+        request = SimulationRequest.model_validate(payload)
+        with self.assertRaises(SimulationInputError) as ctx:
+            run_simulation(request)
+
+        self.assertEqual(ctx.exception.code, "OVERLAPPING_ITEM_PLACEMENTS")
+
+    def test_validation_error_envelope_builder(self) -> None:
+        exc = RequestValidationError(
+            [
+                {
+                    "type": "string_too_short",
+                    "loc": ("body", "players", 0, "player_id"),
+                    "msg": "String should have at least 1 character",
+                    "input": "",
+                }
+            ]
+        )
+        response = build_validation_error_response(exc)
+        self.assertEqual(response.error.type, "validation_error")
+        self.assertEqual(response.error.code, "REQUEST_VALIDATION_ERROR")
+        self.assertEqual(response.error.details[0].location, ["body", "players", 0, "player_id"])
+
+    def test_runtime_error_envelope_builder(self) -> None:
+        response = build_api_error_response(
+            error_type="simulation_runtime_error",
+            code="SIMULATION_RUNTIME_ERROR",
+            message="Unexpected runtime error while executing simulation.",
+        )
+        self.assertEqual(response.error.type, "simulation_runtime_error")
+        self.assertEqual(response.error.code, "SIMULATION_RUNTIME_ERROR")
 
 
 if __name__ == "__main__":

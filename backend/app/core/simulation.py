@@ -19,6 +19,7 @@ from app.models.base_models import (
     SimulationResponse,
     SimulationRunResult,
 )
+from app.core.errors import SimulationInputError
 
 BURN_TICK_INTERVAL_SECONDS = 0.5
 POISON_TICK_INTERVAL_SECONDS = 1.0
@@ -396,7 +397,10 @@ def resolve_item_definition(
 ) -> ItemDefinition:
     item = item_lookup.get(placement.item_definition_id)
     if item is None:
-        raise ValueError(f"Unknown item_definition_id: {placement.item_definition_id}")
+        raise SimulationInputError(
+            f"Unknown item_definition_id: {placement.item_definition_id}",
+            code="UNKNOWN_ITEM_DEFINITION",
+        )
     return item
 
 
@@ -406,18 +410,23 @@ def validate_board_layouts(request: SimulationRequest, item_lookup: dict[str, It
         for placement in player_cfg.board.placements:
             item = item_lookup.get(placement.item_definition_id)
             if item is None:
-                raise ValueError(f"Unknown item_definition_id: {placement.item_definition_id}")
+                raise SimulationInputError(
+                    f"Unknown item_definition_id: {placement.item_definition_id}",
+                    code="UNKNOWN_ITEM_DEFINITION",
+                )
 
             item_end_slot = placement.start_slot + item.size
             if item_end_slot > player_cfg.board.width:
-                raise ValueError(
-                    f"Item {placement.item_instance_id} exceeds board width for {player_cfg.player_id}"
+                raise SimulationInputError(
+                    f"Item {placement.item_instance_id} exceeds board width for {player_cfg.player_id}",
+                    code="ITEM_OUT_OF_BOUNDS",
                 )
 
             for slot in range(placement.start_slot, item_end_slot):
                 if slot in occupied_slots:
-                    raise ValueError(
-                        f"Overlapping item placements on slot {slot} for {player_cfg.player_id}"
+                    raise SimulationInputError(
+                        f"Overlapping item placements on slot {slot} for {player_cfg.player_id}",
+                        code="OVERLAPPING_ITEM_PLACEMENTS",
                     )
                 occupied_slots.add(slot)
 

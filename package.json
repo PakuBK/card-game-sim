@@ -9,6 +9,9 @@
     "dev:frontend": "vp dev",
     "dev:full": "node scripts/dev-full.mjs",
     "gen:api": "node scripts/gen-api-types.mjs",
+    "test:frontend": "vp test --passWithNoTests",
+    "test:backend": "backend/.venv/Scripts/python -m unittest discover -s backend/tests -p \"test_*.py\"",
+    "test:all": "vp run test:frontend && vp run test:backend",
     "build": "tsc && vp build",
     "preview": "vp preview"
   },

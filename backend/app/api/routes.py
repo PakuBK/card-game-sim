@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from app.core.simulation import run_simulation
 from app.models.base_models import (
+    ApiErrorResponse,
     HealthResponse,
     SimulationRequest,
     SimulationResponse,
@@ -21,6 +22,14 @@ def simulation_schema() -> SimulationSchemaResponse:
     return SimulationSchemaResponse()
 
 
-@router.post("/api/simulate", response_model=SimulationResponse)
+@router.post(
+    "/api/simulate",
+    response_model=SimulationResponse,
+    responses={
+        400: {"model": ApiErrorResponse, "description": "Invalid simulation configuration."},
+        422: {"model": ApiErrorResponse, "description": "Request validation failed."},
+        500: {"model": ApiErrorResponse, "description": "Unexpected simulation runtime error."},
+    },
+)
 def simulate(payload: SimulationRequest) -> SimulationResponse:
     return run_simulation(payload)

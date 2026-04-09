@@ -56,11 +56,17 @@ Open the app at the URL printed by `vp dev`.
 
 ## Current API Surface
 
-The backend is still a scaffold, so the API surface is intentionally small while the combat engine is built out.
+The backend now exposes the Phase 1 contract and simulation endpoints.
 
 - `GET /api/health`
-- `GET /api/cards`
-- `POST /api/echo`
+- `GET /api/simulation/schema`
+- `POST /api/simulate`
+
+The `/api/simulate` route returns a structured error envelope for:
+
+- Request validation errors (`422`)
+- Simulation input/runtime contract errors (`400`)
+- Unexpected runtime failures (`500`)
 
 ## Shared Types
 
@@ -85,6 +91,26 @@ Or format everything with:
 
 ```powershell
 vp check --fix
+```
+
+## Tests
+
+Run frontend and backend tests together:
+
+```powershell
+vp run test:all
+```
+
+Run only frontend tests:
+
+```powershell
+vp run test:frontend
+```
+
+Run only backend tests:
+
+```powershell
+vp run test:backend
 ```
 
 ## Direction
