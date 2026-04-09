@@ -47,6 +47,12 @@ class EffectTarget(str, Enum):
     OPPONENT = "opponent"
 
 
+class RunStopReason(str, Enum):
+    NATURAL_WIN = "natural_win"
+    TIME_LIMIT_EXCEEDED = "time_limit_exceeded"
+    EVENT_LIMIT_EXCEEDED = "event_limit_exceeded"
+
+
 class ScopeLimits(BaseModel):
     statuses: list[StatusType] = Field(default_factory=lambda: [StatusType.BURN, StatusType.POISON])
     trigger_modes: list[str] = Field(default_factory=lambda: ["timed_use_only"])
@@ -120,6 +126,7 @@ class SimulationRequest(BaseModel):
     runs: int = Field(default=1, ge=1, le=500)
     max_time_seconds: float = Field(default=60, gt=0)
     max_events: int = Field(default=10_000, gt=0)
+    combat_log_limit: int | None = Field(default=None, gt=0)
     item_definitions: list[ItemDefinition] = Field(min_length=1)
     players: list[PlayerConfig] = Field(min_length=2, max_length=2)
 
@@ -185,13 +192,39 @@ class RunMetrics(BaseModel):
     player_b: PlayerEventMetrics
 
 
+class CombatLogStateDelta(BaseModel):
+    player_id: Literal["player_a", "player_b"]
+    health_delta: float
+    shield_delta: float
+    burn_delta: float
+    poison_delta: float
+    health_after: float
+    shield_after: float
+    burn_after: float
+    poison_after: float
+
+
+class CombatLogEntry(BaseModel):
+    event_index: int
+    time_seconds: float
+    event_type: str
+    source_player_id: Literal["player_a", "player_b"]
+    source_item_instance_id: str | None = None
+    target_id: str | None = None
+    state_deltas: list[CombatLogStateDelta] = Field(default_factory=list)
+
+
 class SimulationRunResult(BaseModel):
     run_index: int
     seed_used: int
     winner_player_id: Literal["player_a", "player_b", "draw"]
     duration_seconds: float
+    stop_reason: RunStopReason
     players: list[PlayerRunState]
     metrics: RunMetrics
+    combat_log: list[CombatLogEntry] = Field(default_factory=list)
+    combat_log_total_events: int = 0
+    combat_log_truncated: bool = False
 
 
 class NumericSummary(BaseModel):
@@ -202,12 +235,19 @@ class NumericSummary(BaseModel):
     p95: float
 
 
+class BatchPerformanceMetrics(BaseModel):
+    total_events_across_batch: int
+    average_events_per_run: float
+    stop_reason_breakdown: dict[str, int] = Field(default_factory=dict)
+
+
 class BatchSummary(BaseModel):
     run_count: int
     player_a_win_rate: float
     player_b_win_rate: float
     draw_rate: float
     duration_seconds: NumericSummary
+    performance: BatchPerformanceMetrics = Field(default_factory=BatchPerformanceMetrics)
 
 
 class SimulationResponse(BaseModel):

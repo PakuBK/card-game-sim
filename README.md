@@ -81,6 +81,31 @@ Each simulation run returns structured metrics designed for later visualization 
       "run_index": 0,
       "winner_player_id": "player_a",
       "duration_seconds": 5.5,
+      "combat_log_total_events": 47,
+      "combat_log_truncated": false,
+      "combat_log": [
+        {
+          "event_index": 0,
+          "time_seconds": 1.0,
+          "event_type": "item_use",
+          "source_player_id": "player_a",
+          "source_item_instance_id": "a-katana",
+          "target_id": "a-katana",
+          "state_deltas": [
+            {
+              "player_id": "player_b",
+              "health_delta": -5.0,
+              "shield_delta": 0.0,
+              "burn_delta": 0.0,
+              "poison_delta": 0.0,
+              "health_after": 25.0,
+              "shield_after": 0.0,
+              "burn_after": 0.0,
+              "poison_after": 0.0
+            }
+          ]
+        }
+      ],
       "metrics": {
         "total_events_processed": 47,
         "player_a": {
@@ -192,6 +217,13 @@ Each simulation run returns structured metrics designed for later visualization 
 - `events_triggered`: Dictionary of event counts (e.g., `used`, `damage`, `apply_burn`, `burn_tick`)
 - `status_effects_applied`: Status applications originating from this item
 - `status_effects_received`: Placeholder for item-level statuses (populated when item status mechanics like slow/haste are added)
+
+**Combat Log Fields:**
+
+- `combat_log`: Ordered event entries for run inspection and regression snapshots
+- `combat_log_total_events`: Count of all processed events for the run (before any cap)
+- `combat_log_truncated`: Whether returned log entries were capped
+- Request option `combat_log_limit`: Optional per-run cap for returned log entries in batch-heavy runs
 
 These metrics are deterministic for identical seeds and payloads, and remain stable across runs to support regression testing and visualization pipelines.
 

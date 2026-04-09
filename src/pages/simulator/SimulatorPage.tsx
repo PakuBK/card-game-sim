@@ -23,6 +23,19 @@ const samplePayload: SimulationRequest = {
         },
       ],
     },
+    {
+      id: "lighter",
+      name: "Lighter",
+      size: 1,
+      cooldown_seconds: 3,
+      effects: [
+        {
+          type: "apply_burn",
+          target: "opponent",
+          magnitude: 5,
+        },
+      ],
+    },
   ],
   players: [
     {
@@ -30,7 +43,10 @@ const samplePayload: SimulationRequest = {
       stats: { max_health: 30, start_shield: 0, regeneration_per_second: 1 },
       board: {
         width: 10,
-        placements: [{ item_instance_id: "a-katana", item_definition_id: "katana", start_slot: 0 }],
+        placements: [
+          { item_instance_id: "a-katana", item_definition_id: "katana", start_slot: 0 },
+          { item_instance_id: "a-ligther", item_definition_id: "lighter", start_slot: 1 },
+        ],
       },
       initial_statuses: [],
     },
@@ -101,6 +117,8 @@ function ResponseSummary({ response }: { response: SimulationResponse }) {
           };
           const playerAItems = playerAMetrics.item_metrics ?? [];
           const playerBItems = playerBMetrics.item_metrics ?? [];
+          const combatLog = run.combat_log ?? [];
+          const logPreview = combatLog.slice(0, 20);
 
           return (
             <div key={run.run_index} className="rounded border border-border p-3">
@@ -184,6 +202,40 @@ function ResponseSummary({ response }: { response: SimulationResponse }) {
                     {playerBItems.length === 0 ? <li>none</li> : null}
                   </ul>
                 </div>
+              </div>
+              <div className="mt-3 rounded border border-border p-2">
+                <div className="text-xs font-medium opacity-75">Combat log</div>
+                <div className="mt-1 text-xs opacity-80">
+                  Entries returned: {combatLog.length}
+                  {typeof run.combat_log_total_events === "number"
+                    ? ` / ${run.combat_log_total_events} processed`
+                    : ""}
+                  {run.combat_log_truncated ? " (truncated by combat_log_limit)" : ""}
+                </div>
+                <ul className="mt-2 space-y-1 text-xs">
+                  {logPreview.map((entry) => (
+                    <li key={entry.event_index}>
+                      t={entry.time_seconds} [{entry.event_type}] src={entry.source_player_id}
+                      {entry.source_item_instance_id
+                        ? `:${entry.source_item_instance_id}`
+                        : ""}{" "}
+                      tgt=
+                      {entry.target_id ?? "-"} delta=
+                      {entry.state_deltas
+                        ?.map(
+                          (delta) =>
+                            `${delta.player_id}(hp ${delta.health_delta}, sh ${delta.shield_delta}, b ${delta.burn_delta}, p ${delta.poison_delta})`,
+                        )
+                        .join("; ") || "none"}
+                    </li>
+                  ))}
+                  {logPreview.length === 0 ? <li>none</li> : null}
+                </ul>
+                {combatLog.length > logPreview.length ? (
+                  <div className="mt-1 text-xs opacity-70">
+                    Showing first {logPreview.length} entries in preview.
+                  </div>
+                ) : null}
               </div>
             </div>
           );

@@ -112,6 +112,11 @@ The simulator should return outputs that help users understand both single runs 
 - Add the event queue, timers, status ticks, and adjacency rules
 - Support a minimal but extensible item execution model
 
+### Phase 2.5: Extending the Core Engine with time based effects
+
+- Extend status effects to include item status effects like haste, freeze, slow, and flying.
+- Create test coverage for said effects.
+
 ### Phase 3: API and Frontend Integration
 
 - Replace dummy endpoints with real simulation routes
