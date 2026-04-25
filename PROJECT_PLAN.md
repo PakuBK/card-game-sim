@@ -6,29 +6,34 @@ Build a data-driven combat sandbox inspired by _The Bazaar_. The project is not 
 
 ## Execution Snapshot
 
-- Current active phase: Phase 3 API and Frontend Integration
-- Detailed phase trackers:
-  - `docs/phase2_execution_plan.md`
-  - `docs/phase3_item_status_effects_plan.md`
+- Current active phase: Phase 4 Debugging and Analysis UX (early)
 - Quick status:
   - Phase 1 Contract and Scope: complete
   - Phase 2 Core Engine: complete
   - Phase 2.5 Item Status Effects Extension: complete
-  - Phase 3 API and Frontend Integration: in progress
-  - Phase 4 to Phase 5: not started
+  - Phase 3 API and Frontend Integration: mostly complete
+  - Phase 4 Debugging and Analysis UX: in progress
+  - Phase 5 Scale and Packaging: not started
 
 ## Current State
 
-The repository now contains a working deterministic combat simulation foundation:
+The repository now contains a working deterministic combat simulation foundation and practical debug tooling:
 
-- FastAPI simulation endpoints using Pydantic contracts
-- Discrete-event combat engine with deterministic ordering
-- Player status effects (burn, poison, regen)
-- Item status effects (slow, haste, freeze, charge, flight) with timer rescheduling
-- Generated OpenAPI TypeScript bindings wired into the frontend
-- Scenario debugging utilities for item-status timing traces
+- FastAPI simulation endpoints and schema endpoint (`/api/health`, `/api/simulation/schema`, `/api/simulate`)
+- Discrete-event simulation engine with deterministic ordering and seeded runs
+- Player status effects implemented: burn, poison, regeneration
+- Item timer modifiers implemented: slow, haste, freeze, charge, flight
+- Expanded target scope for item effects (opponent/self item selectors, left-most/right-most, size-based, random)
+- Structured metrics in simulation output (player and item level damage/event/status summaries)
+- Combat log support with `combat_log_limit` and truncation metadata
+- Modifier timer trace emitted per run for timer debugging
+- OpenAPI-generated TypeScript contracts wired into frontend API calls
+- Frontend debug surfaces:
+  - `src/pages/debug/DebugPage.tsx` for schema viewing, preset payloads, per-run logs, and modifier traces
+  - `src/pages/simulator/SimulatorPage.tsx` for request/response inspection
+- Backend deterministic and mechanics tests in `backend/tests`
 
-The next stage is to expand API and frontend integration for robust editing workflows, schema-driven configuration UX, and richer analysis surfaces.
+The next stage is to move from debug-oriented JSON workflows to a dedicated visual authoring experience while preserving deterministic contracts and traceability.
 
 ## Product Direction
 
@@ -40,15 +45,35 @@ The long-term direction is a configurable combat simulator with three core capab
 
 The system should stay generic. Item behavior is not hardcoded as special cases in the backend. Instead, the engine interprets item definitions, triggers, effects, timers, and status interactions supplied by the frontend.
 
+## Gap Analysis Against Spec Vision
+
+What is aligned today:
+
+- Deterministic, event-driven backend execution model
+- Data-driven item and board payload contracts
+- Core status and timer-modifier mechanics
+- Batch and single-run style outputs via one simulation endpoint
+- Stable metrics foundation for future analysis features
+
+What is still missing to meet the intended UX:
+
+- Visual item and board editor (current flow is JSON-first)
+- Rich strategy comparison and distribution analysis UI
+- Guided validation and error UX in the frontend authoring flow
+- Expanded automated regression coverage and packaging hardening
+
 ## Architecture Direction
 
 ### Frontend
 
-- React-based configuration workspace for item definitions, boards, and simulation settings
-- Visual editing for board layout, item placement, and player setup
-- Simulation controls for seed, run count, and duration or stop conditions
-- Results views for combat logs, aggregate stats, and distributions
-- Validation feedback surfaced from backend schema checks
+- Keep TanStack Router + React Query as the data/navigation base
+- Evolve from JSON textareas and fixed sample payloads into visual builders:
+  - Item definition editor
+  - Board placement editor with size and slot constraints
+  - Player setup editor for stats and initial statuses
+- Retain advanced debug surfaces (`DebugPage`) for engine diagnostics
+- Add comparative analysis views for multi-run outcomes
+- Surface backend validation errors inline in form workflows
 
 ### Backend
 
@@ -57,6 +82,7 @@ The system should stay generic. Item behavior is not hardcoded as special cases 
 - Importable simulation engine with deterministic execution
 - Seeded randomness for reproducible runs
 - Batch-friendly simulation entrypoints for repeated runs
+- Continue additive contract evolution so frontend types remain stable
 
 ### Simulation Model
 
@@ -67,6 +93,8 @@ The engine should follow a discrete-event approach:
 - Status effects such as burn and poison schedule their own ticks
 - Timer modifiers like slow, haste, freeze, and charge force rescheduling when needed
 - Board adjacency matters for target selection and item interaction rules
+
+Current note: this model is implemented and active in production code paths.
 
 ## Scope
 
@@ -79,17 +107,30 @@ The project scope is combat only. It should model the pieces needed for experime
 - Timer-based item use and status ticking
 - Single-fight debug runs and batch statistical runs
 
+Near-term scope control:
+
+- Keep expanding through additive effects/targets rather than bespoke item logic
+- Avoid introducing non-deterministic behavior without explicit seeded control
+
 ## Data and API Direction
 
 The backend should define the source-of-truth contracts and generate frontend types from them.
 
-Likely core models include:
+Current core models include:
 
 - `ItemDefinition`
 - `BoardConfig`
 - `PlayerConfig`
 - `SimulationRequest`
-- `SimulationResult`
+- `SimulationResponse`
+
+Current response shape already includes:
+
+- `runs[]` with per-run winner/duration/stop reason/player state
+- `metrics` with per-player and per-item breakdowns
+- `combat_log` and truncation metadata
+- `modifier_timer_trace` for timer debugging
+- `summary` with win rates and duration percentiles
 
 The API should stay compact and purpose-built for the simulator, with endpoints for health checks, catalog or schema discovery, and simulation execution.
 
@@ -104,6 +145,12 @@ The simulator should return outputs that help users understand both single runs 
 - Proc and trigger counts
 - Average, median, and percentile summaries across batch runs
 
+Current implementation status:
+
+- Baseline metrics and summaries are implemented and returned
+- Metrics keys are stable enough for frontend table and chart integration
+- Remaining work is primarily presentation and comparative analytics UX
+
 ## Implementation Phases
 
 ### Phase 1: Contract and Scope
@@ -112,16 +159,22 @@ The simulator should return outputs that help users understand both single runs 
 - Define the backend request and response models
 - Establish the JSON shape for user-defined items and boards
 
+Status: complete.
+
 ### Phase 2: Core Engine
 
 - Implement the deterministic combat loop in Python
 - Add the event queue, timers, status ticks, and adjacency rules
 - Support a minimal but extensible item execution model
 
+Status: complete.
+
 ### Phase 2.5: Extending the Core Engine with time based effects
 
 - Extend status effects to include item status effects like haste, freeze, slow, and flying.
 - Create test coverage for said effects.
+
+Status: complete.
 
 ### Phase 3: API and Frontend Integration
 
@@ -129,17 +182,34 @@ The simulator should return outputs that help users understand both single runs 
 - Generate frontend types from OpenAPI
 - Build the editor UI for item and board configuration
 
+Status: mostly complete.
+
+- Done: real API routes, typed frontend API client, generated OpenAPI contracts, integrated debug pages.
+- Remaining from original phase intent: true visual editor workflows for items/boards/players.
+
 ### Phase 4: Debugging and Analysis UX
 
 - Add single-run inspection views and combat logs
 - Add batch run statistics and result comparisons
 - Improve validation and error reporting for malformed configurations
 
+Status: in progress.
+
+- Done: single-run inspection, combat logs, modifier timer traces, and per-run metric tables.
+- Next: side-by-side build comparisons, richer aggregate visualization, and frontend validation UX polish.
+
 ### Phase 5: Scale and Packaging
 
 - Add regression tests for determinism and core mechanics
 - Optimize for repeated simulations and larger item sets
 - Package the app for straightforward local and VPS deployment
+
+Status: not started.
+
+Planned entry criteria:
+
+- Frontend authoring UX is usable without manual JSON editing.
+- Core analysis workflows are stable enough to benchmark and optimize.
 
 ## Quality Goals
 
@@ -149,8 +219,38 @@ The simulator should return outputs that help users understand both single runs 
 - Fast enough execution for repeated simulations
 - Small, understandable initial scope that can expand safely
 
+Current quality signal:
+
+- `vp check` is clean.
+- Core backend behavior has targeted tests for deterministic outcomes and status/timer interactions.
+- Additional frontend and contract-regression tests are still needed as UX complexity grows.
+
+## Next 30-60 Day Priorities
+
+1. Build visual authoring flows
+
+- Item/effect editor
+- Board placement editor with occupancy validation
+- Player stats and initial status editor
+
+2. Improve analysis UX
+
+- Run comparison views
+- Aggregated distributions/charts from batch results
+- Better filtering/export for combat logs and timer traces
+
+3. Strengthen validation and regression confidence
+
+- Frontend validation aligned to backend schema constraints
+- Contract and determinism regression tests around high-risk mechanics
+
+4. Prepare for scale phase entry
+
+- Profile event-loop hotspots with larger synthetic batches
+- Define deployment target and packaging checklist
+
 ## Notes
 
 - The project spec is the source of truth for the combat model and design constraints
-- The plan should stay broader than the spec and describe the project direction, not every mechanic in implementation detail
-- The immediate goal is to turn the current scaffold into a usable simulator foundation, then expand the engine and editor incrementally
+- The plan should stay broader than the spec and describe delivery priorities and status
+- The immediate goal is to complete visual authoring and analysis workflows on top of the already functional deterministic engine
