@@ -39,6 +39,254 @@ def base_player(player_id: str, placements: list[dict]) -> dict:
 
 
 class ItemStatusEffectTests(unittest.TestCase):
+    def test_enemy_left_most_targets_left_edge_item(self) -> None:
+        payload = build_request_payload(
+            item_definitions=[
+                {
+                    "id": "left-lock",
+                    "name": "Left Lock",
+                    "size": 1,
+                    "cooldown_seconds": 99.0,
+                    "initial_delay_seconds": 0.0,
+                    "effects": [
+                        {
+                            "type": "apply_item_slow",
+                            "target": "enemy_left_most",
+                            "magnitude": 2.0,
+                        }
+                    ],
+                },
+                {
+                    "id": "small",
+                    "name": "Small",
+                    "size": 1,
+                    "cooldown_seconds": 8.0,
+                    "effects": [{"type": "damage", "target": "opponent", "magnitude": 1.0}],
+                },
+                {
+                    "id": "large",
+                    "name": "Large",
+                    "size": 3,
+                    "cooldown_seconds": 8.0,
+                    "effects": [{"type": "damage", "target": "opponent", "magnitude": 1.0}],
+                },
+            ],
+            players=[
+                base_player(
+                    "player_a",
+                    [{"item_instance_id": "a-lock", "item_definition_id": "left-lock", "start_slot": 0}],
+                ),
+                base_player(
+                    "player_b",
+                    [
+                        {"item_instance_id": "b-left", "item_definition_id": "small", "start_slot": 0},
+                        {"item_instance_id": "b-right", "item_definition_id": "large", "start_slot": 4},
+                    ],
+                ),
+            ],
+        )
+
+        request = SimulationRequest.model_validate(payload)
+        result = run_simulation(request)
+        run = result.runs[0]
+
+        slow_events = [entry for entry in run.combat_log if entry.event_type == "item_slow_start"]
+        self.assertGreaterEqual(len(slow_events), 1)
+        self.assertEqual(slow_events[0].target_id, "b-left")
+
+    def test_enemy_small_item_targets_only_size_one_items(self) -> None:
+        payload = build_request_payload(
+            item_definitions=[
+                {
+                    "id": "small-lock",
+                    "name": "Small Lock",
+                    "size": 1,
+                    "cooldown_seconds": 99.0,
+                    "initial_delay_seconds": 0.0,
+                    "effects": [
+                        {
+                            "type": "apply_item_haste",
+                            "target": "enemy_small_item",
+                            "magnitude": 2.0,
+                        }
+                    ],
+                },
+                {
+                    "id": "small",
+                    "name": "Small",
+                    "size": 1,
+                    "cooldown_seconds": 8.0,
+                    "effects": [{"type": "damage", "target": "opponent", "magnitude": 1.0}],
+                },
+                {
+                    "id": "medium",
+                    "name": "Medium",
+                    "size": 2,
+                    "cooldown_seconds": 8.0,
+                    "effects": [{"type": "damage", "target": "opponent", "magnitude": 1.0}],
+                },
+            ],
+            players=[
+                base_player(
+                    "player_a",
+                    [{"item_instance_id": "a-lock", "item_definition_id": "small-lock", "start_slot": 0}],
+                ),
+                base_player(
+                    "player_b",
+                    [
+                        {"item_instance_id": "b-small", "item_definition_id": "small", "start_slot": 0},
+                        {"item_instance_id": "b-medium", "item_definition_id": "medium", "start_slot": 3},
+                    ],
+                ),
+            ],
+        )
+
+        request = SimulationRequest.model_validate(payload)
+        result = run_simulation(request)
+        run = result.runs[0]
+
+        haste_events = [entry for entry in run.combat_log if entry.event_type == "item_haste_start"]
+        self.assertGreaterEqual(len(haste_events), 1)
+        self.assertEqual(haste_events[0].target_id, "b-small")
+
+    def test_slow_and_haste_overlap_cancel_to_normal_speed(self) -> None:
+        payload = build_request_payload(
+            item_definitions=[
+                {
+                    "id": "slow_caster",
+                    "name": "Slow Caster",
+                    "size": 1,
+                    "cooldown_seconds": 99.0,
+                    "initial_delay_seconds": 4.0,
+                    "effects": [
+                        {
+                            "type": "apply_item_slow",
+                            "target": "opponent_item",
+                            "magnitude": 2.0,
+                        }
+                    ],
+                },
+                {
+                    "id": "engine",
+                    "name": "Engine",
+                    "size": 1,
+                    "cooldown_seconds": 4.0,
+                    "initial_delay_seconds": 4.0,
+                    "effects": [
+                        {
+                            "type": "apply_item_haste",
+                            "target": "self_item",
+                            "magnitude": 2.0,
+                        }
+                    ],
+                },
+            ],
+            players=[
+                base_player(
+                    "player_a",
+                    [
+                        {
+                            "item_instance_id": "a-slow",
+                            "item_definition_id": "slow_caster",
+                            "start_slot": 0,
+                        }
+                    ],
+                ),
+                base_player(
+                    "player_b",
+                    [
+                        {
+                            "item_instance_id": "b-engine",
+                            "item_definition_id": "engine",
+                            "start_slot": 0,
+                        }
+                    ],
+                ),
+            ],
+        )
+
+        request = SimulationRequest.model_validate(payload)
+        result = run_simulation(request)
+        run = result.runs[0]
+
+        engine_uses = [
+            entry.time_seconds
+            for entry in run.combat_log
+            if entry.event_type == "item_use" and entry.source_item_instance_id == "b-engine"
+        ]
+        self.assertGreaterEqual(len(engine_uses), 2)
+        self.assertEqual(engine_uses[0], 4.0)
+        self.assertEqual(engine_uses[1], 8.0)
+
+    def test_freeze_and_haste_overlap_keeps_item_paused(self) -> None:
+        payload = build_request_payload(
+            item_definitions=[
+                {
+                    "id": "freeze_caster",
+                    "name": "Freeze Caster",
+                    "size": 1,
+                    "cooldown_seconds": 99.0,
+                    "initial_delay_seconds": 4.0,
+                    "effects": [
+                        {
+                            "type": "apply_item_freeze",
+                            "target": "opponent_item",
+                            "magnitude": 2.0,
+                        }
+                    ],
+                },
+                {
+                    "id": "engine",
+                    "name": "Engine",
+                    "size": 1,
+                    "cooldown_seconds": 4.0,
+                    "initial_delay_seconds": 4.0,
+                    "effects": [
+                        {
+                            "type": "apply_item_haste",
+                            "target": "self_item",
+                            "magnitude": 2.0,
+                        }
+                    ],
+                },
+            ],
+            players=[
+                base_player(
+                    "player_a",
+                    [
+                        {
+                            "item_instance_id": "a-freeze",
+                            "item_definition_id": "freeze_caster",
+                            "start_slot": 0,
+                        }
+                    ],
+                ),
+                base_player(
+                    "player_b",
+                    [
+                        {
+                            "item_instance_id": "b-engine",
+                            "item_definition_id": "engine",
+                            "start_slot": 0,
+                        }
+                    ],
+                ),
+            ],
+        )
+
+        request = SimulationRequest.model_validate(payload)
+        result = run_simulation(request)
+        run = result.runs[0]
+
+        engine_uses = [
+            entry.time_seconds
+            for entry in run.combat_log
+            if entry.event_type == "item_use" and entry.source_item_instance_id == "b-engine"
+        ]
+        self.assertGreaterEqual(len(engine_uses), 2)
+        self.assertEqual(engine_uses[0], 4.0)
+        self.assertEqual(engine_uses[1], 10.0)
+
     def test_apply_item_slow_delays_target_cooldown(self) -> None:
         payload = build_request_payload(
             item_definitions=[

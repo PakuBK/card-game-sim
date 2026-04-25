@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import random
+
 from app.core.errors import SimulationInputError
 from app.core.simulation_types import RuntimeBoard, RuntimeBoardItem, RuntimeItem, RuntimePlayer
 from app.models.base_models import BoardItemPlacement, EffectTarget, ItemDefinition, SimulationRequest
+
+
+def opponent_player_id(player_id: str) -> str:
+    return "player_b" if player_id == "player_a" else "player_a"
 
 
 def resolve_item_definition(
@@ -154,21 +160,187 @@ def select_deterministic_target_item(
     return candidates[0][3]
 
 
+def _build_scope_candidates(
+    *,
+    source_item: RuntimeItem,
+    scope: str,
+    board_by_player: dict[str, RuntimeBoard],
+    runtime_item_lookup: dict[str, RuntimeItem],
+) -> list[RuntimeItem]:
+    if scope == "self":
+        target_player_ids = [source_item.owner_id]
+    elif scope == "enemy":
+        target_player_ids = [opponent_player_id(source_item.owner_id)]
+    else:
+        target_player_ids = [source_item.owner_id, opponent_player_id(source_item.owner_id)]
+
+    candidates: list[RuntimeItem] = []
+    for target_player_id in target_player_ids:
+        board = board_by_player[target_player_id]
+        sorted_board_items = sorted(
+            board.items_by_instance_id.values(),
+            key=lambda item: (item.start_slot, item.end_slot, item.item_instance_id),
+        )
+        for board_item in sorted_board_items:
+            runtime_item = runtime_item_lookup.get(board_item.item_instance_id)
+            if runtime_item is None:
+                continue
+            candidates.append(runtime_item)
+    return candidates
+
+
+def _filter_candidates_by_pattern(candidates: list[RuntimeItem], pattern: str) -> list[RuntimeItem]:
+    if pattern == "random":
+        return candidates
+    if pattern == "small_item":
+        return [item for item in candidates if item.definition.size == 1]
+    if pattern == "medium_item":
+        return [item for item in candidates if item.definition.size == 2]
+    if pattern == "large_item":
+        return [item for item in candidates if item.definition.size == 3]
+    if pattern in {"left_most", "right_most"}:
+        # The caller resolves left/right from board ordering.
+        return candidates
+    return []
+
+
+def _pick_candidate_for_pattern(
+    *,
+    candidates: list[RuntimeItem],
+    pattern: str,
+    board_by_player: dict[str, RuntimeBoard],
+    rng: random.Random,
+) -> RuntimeItem | None:
+    if not candidates:
+        return None
+
+    sortable = sorted(
+        candidates,
+        key=lambda item: (
+            item.owner_id,
+            board_by_player[item.owner_id].items_by_instance_id[item.instance_id].start_slot,
+            board_by_player[item.owner_id].items_by_instance_id[item.instance_id].end_slot,
+            item.instance_id,
+        ),
+    )
+
+    if pattern == "right_most":
+        return max(
+            sortable,
+            key=lambda item: (
+                board_by_player[item.owner_id].items_by_instance_id[item.instance_id].end_slot,
+                board_by_player[item.owner_id].items_by_instance_id[item.instance_id].start_slot,
+                item.instance_id,
+            ),
+        )
+
+    if pattern == "left_most":
+        return min(
+            sortable,
+            key=lambda item: (
+                board_by_player[item.owner_id].items_by_instance_id[item.instance_id].start_slot,
+                board_by_player[item.owner_id].items_by_instance_id[item.instance_id].end_slot,
+                item.instance_id,
+            ),
+        )
+
+    if pattern == "random":
+        return sortable[rng.randrange(len(sortable))]
+
+    return sortable[0]
+
+
+def select_target_item_instance_id(
+    *,
+    source_item: RuntimeItem,
+    effect_target: EffectTarget,
+    board_by_player: dict[str, RuntimeBoard],
+    runtime_item_lookup: dict[str, RuntimeItem],
+    rng: random.Random,
+) -> str | None:
+    target_value = effect_target.value
+
+    if target_value in {EffectTarget.SELF_ITEM.value, EffectTarget.SELF.value}:
+        return source_item.instance_id
+
+    if target_value in {EffectTarget.OPPONENT_ITEM.value, EffectTarget.ENEMY_ADJACENT.value}:
+        target_player_id = opponent_player_id(source_item.owner_id)
+        return select_deterministic_target_item(
+            source_player_id=source_item.owner_id,
+            source_item_instance_id=source_item.instance_id,
+            target_player_id=target_player_id,
+            board_by_player=board_by_player,
+        )
+
+    if target_value == EffectTarget.ENEMY_RANDOM.value:
+        scope, pattern = "enemy", "random"
+    elif target_value == EffectTarget.SELF_RANDOM.value:
+        scope, pattern = "self", "random"
+    elif target_value == EffectTarget.ANY_RANDOM.value:
+        scope, pattern = "any", "random"
+    elif target_value.startswith("enemy_"):
+        scope, pattern = "enemy", target_value.removeprefix("enemy_")
+    elif target_value.startswith("self_"):
+        scope, pattern = "self", target_value.removeprefix("self_")
+    elif target_value.startswith("any_"):
+        scope, pattern = "any", target_value.removeprefix("any_")
+    else:
+        return None
+
+    candidates = _build_scope_candidates(
+        source_item=source_item,
+        scope=scope,
+        board_by_player=board_by_player,
+        runtime_item_lookup=runtime_item_lookup,
+    )
+    filtered = _filter_candidates_by_pattern(candidates, pattern)
+    if pattern in {"left_most", "right_most", "random"}:
+        selected = _pick_candidate_for_pattern(
+            candidates=filtered,
+            pattern=pattern,
+            board_by_player=board_by_player,
+            rng=rng,
+        )
+    else:
+        selected = _pick_candidate_for_pattern(
+            candidates=filtered,
+            pattern="random",
+            board_by_player=board_by_player,
+            rng=rng,
+        )
+    return selected.instance_id if selected is not None else None
+
+
 def resolve_effect_target(
     *,
     source_item: RuntimeItem,
     effect_target: EffectTarget,
     players: dict[str, RuntimePlayer],
     board_by_player: dict[str, RuntimeBoard],
+    runtime_item_lookup: dict[str, RuntimeItem],
+    rng: random.Random,
 ) -> tuple[RuntimePlayer, str | None]:
     if effect_target == EffectTarget.SELF:
         return players[source_item.owner_id], source_item.instance_id
 
-    opponent_id = "player_b" if source_item.owner_id == "player_a" else "player_a"
-    target_anchor_item_instance_id = select_deterministic_target_item(
-        source_player_id=source_item.owner_id,
-        source_item_instance_id=source_item.instance_id,
-        target_player_id=opponent_id,
+    if effect_target == EffectTarget.OPPONENT:
+        opponent_id = opponent_player_id(source_item.owner_id)
+        return players[opponent_id], opponent_id
+
+    target_item_instance_id = select_target_item_instance_id(
+        source_item=source_item,
+        effect_target=effect_target,
         board_by_player=board_by_player,
+        runtime_item_lookup=runtime_item_lookup,
+        rng=rng,
     )
-    return players[opponent_id], target_anchor_item_instance_id or opponent_id
+    if target_item_instance_id is None:
+        opponent_id = opponent_player_id(source_item.owner_id)
+        return players[opponent_id], None
+
+    target_runtime_item = runtime_item_lookup.get(target_item_instance_id)
+    if target_runtime_item is None:
+        opponent_id = opponent_player_id(source_item.owner_id)
+        return players[opponent_id], None
+
+    return players[target_runtime_item.owner_id], target_item_instance_id

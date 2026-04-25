@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import heapq
 from itertools import count
+import random
 from statistics import mean, median
 
 from app.core.simulation_board import build_runtime_boards, resolve_item_definition
 from app.core.simulation_event_handlers import (
+    clear_modifier_timer_trace,
+    get_modifier_timer_trace,
     handle_burn_tick_event,
     handle_item_charge_event,
     handle_item_flight_end_event,
@@ -92,6 +95,8 @@ def run_simulation(request: SimulationRequest) -> SimulationResponse:
 
 
 def simulate_single_run(request: SimulationRequest, run_index: int) -> SimulationRunResult:
+    clear_modifier_timer_trace()
+
     item_lookup = {item.id: item for item in request.item_definitions}
     board_by_player = build_runtime_boards(request, item_lookup)
 
@@ -122,6 +127,7 @@ def simulate_single_run(request: SimulationRequest, run_index: int) -> Simulatio
 
     queue: list[Event] = []
     sequence = count()
+    rng = random.Random(request.seed + run_index)
 
     runtime_item_lookup = {item.instance_id: item for item in runtime_items}
     combat_log: list[CombatLogEntry] = []
@@ -221,28 +227,6 @@ def simulate_single_run(request: SimulationRequest, run_index: int) -> Simulatio
             if same_time_event.stale:
                 continue
 
-            if same_time_event.event_type == EVENT_ITEM_USE:
-                runtime_item = runtime_item_lookup[same_time_event.target_id or ""]
-                if (
-                    runtime_item.current_cooldown_modifier == 0.0
-                    and runtime_item.freeze_end_time is not None
-                    and current_time <= runtime_item.freeze_end_time
-                ):
-                    freeze_applied_at = runtime_item.freeze_applied_at or current_time
-                    remaining_cooldown = max(0.0, same_time_event.time - freeze_applied_at)
-                    heapq.heappush(
-                        queue,
-                        make_event(
-                            time=runtime_item.freeze_end_time + remaining_cooldown,
-                            sequence=sequence,
-                            event_type=EVENT_ITEM_USE,
-                            source_id=same_time_event.source_id,
-                            target_id=same_time_event.target_id,
-                            source_item_instance_id=same_time_event.source_item_instance_id,
-                        ),
-                    )
-                    continue
-
             state_before_event = snapshot_player_states(players)
             metrics.total_events_processed += 1
             log_target_id = same_time_event.target_id
@@ -259,6 +243,7 @@ def simulate_single_run(request: SimulationRequest, run_index: int) -> Simulatio
                     current_time=current_time,
                     queue=queue,
                     sequence=sequence,
+                    rng=rng,
                 )
             elif same_time_event.event_type == EVENT_BURN_TICK:
                 handle_burn_tick_event(
@@ -402,6 +387,8 @@ def simulate_single_run(request: SimulationRequest, run_index: int) -> Simulatio
         elif player_b_alive and not player_a_alive:
             winner = "player_b"
 
+    trace_entries = get_modifier_timer_trace()
+
     return SimulationRunResult(
         run_index=run_index,
         seed_used=request.seed + run_index,
@@ -430,6 +417,7 @@ def simulate_single_run(request: SimulationRequest, run_index: int) -> Simulatio
         ],
         metrics=metrics,
         combat_log=combat_log,
+        modifier_timer_trace=trace_entries,
         combat_log_total_events=combat_log_total_events,
         combat_log_truncated=combat_log_total_events > len(combat_log),
     )

@@ -54,6 +54,23 @@ class EffectTarget(str, Enum):
     OPPONENT_ITEM = "opponent_item"
     ENEMY_ADJACENT = "enemy_adjacent"
     ENEMY_RANDOM = "enemy_random"
+    SELF_RANDOM = "self_random"
+    ANY_RANDOM = "any_random"
+    SELF_SMALL_ITEM = "self_small_item"
+    SELF_MEDIUM_ITEM = "self_medium_item"
+    SELF_LARGE_ITEM = "self_large_item"
+    SELF_LEFT_MOST = "self_left_most"
+    SELF_RIGHT_MOST = "self_right_most"
+    ENEMY_SMALL_ITEM = "enemy_small_item"
+    ENEMY_MEDIUM_ITEM = "enemy_medium_item"
+    ENEMY_LARGE_ITEM = "enemy_large_item"
+    ENEMY_LEFT_MOST = "enemy_left_most"
+    ENEMY_RIGHT_MOST = "enemy_right_most"
+    ANY_SMALL_ITEM = "any_small_item"
+    ANY_MEDIUM_ITEM = "any_medium_item"
+    ANY_LARGE_ITEM = "any_large_item"
+    ANY_LEFT_MOST = "any_left_most"
+    ANY_RIGHT_MOST = "any_right_most"
 
 
 class RunStopReason(str, Enum):
@@ -228,6 +245,22 @@ class CombatLogEntry(BaseModel):
     state_deltas: list[CombatLogStateDelta] = Field(default_factory=list)
 
 
+class ModifierTimerTraceEntry(BaseModel):
+    time: float
+    operation: str
+    item_id: str
+    modifier: str | None = None
+    modifier_instance_id: str | None = None
+    old_modifier: float | None = None
+    new_modifier: float | None = None
+    duration: float | None = None
+    pending_event_before: float | None = None
+    pending_event_after: float | None = None
+    remaining_before: float | None = None
+    remaining_normal: float | None = None
+    charge_amount: float | None = None
+
+
 class SimulationRunResult(BaseModel):
     run_index: int
     seed_used: int
@@ -237,6 +270,7 @@ class SimulationRunResult(BaseModel):
     players: list[PlayerRunState]
     metrics: RunMetrics
     combat_log: list[CombatLogEntry] = Field(default_factory=list)
+    modifier_timer_trace: list[ModifierTimerTraceEntry] = Field(default_factory=list)
     combat_log_total_events: int = 0
     combat_log_truncated: bool = False
 

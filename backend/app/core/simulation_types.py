@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from itertools import count
+from typing import Literal
 
 from app.models.base_models import ItemDefinition
 
@@ -61,22 +62,28 @@ class RuntimePlayer:
 
 
 @dataclass
+class RuntimeItemModifier:
+    instance_id: str
+    modifier_type: Literal["slow", "haste", "freeze"]
+    start_time: float
+    end_time: float
+    source_item_instance_id: str | None = None
+
+
+@dataclass
 class RuntimeItem:
     instance_id: str
     owner_id: str
     definition: ItemDefinition
-    
-    # Item status effect state
-    current_cooldown_modifier: float = 1.0
-    
-    # Modifier expiration times (only one active at a time)
-    slow_end_time: float | None = None
-    haste_end_time: float | None = None
-    freeze_end_time: float | None = None
+
+    # Active speed modifiers keyed by unique instance_id.
+    active_modifiers: dict[str, RuntimeItemModifier] = field(default_factory=dict)
+
+    # Flight remains a binary timed status.
     flight_end_time: float | None = None
-    
-    # Freeze application time (used to calculate remaining cooldown when freeze ends)
-    freeze_applied_at: float | None = None
+
+    # Remaining base cooldown captured when transitioning into frozen state.
+    frozen_remaining_cooldown: float | None = None
 
 
 @dataclass(frozen=True)
@@ -107,6 +114,7 @@ class Event:
     target_id: str | None = field(compare=False)
     source_item_instance_id: str | None = field(default=None, compare=False)
     effect_magnitude: float | None = field(default=None, compare=False)
+    modifier_instance_id: str | None = field(default=None, compare=False)
     stale: bool = field(default=False, compare=False)
 
 
@@ -119,6 +127,7 @@ def make_event(
     target_id: str | None,
     source_item_instance_id: str | None = None,
     effect_magnitude: float | None = None,
+    modifier_instance_id: str | None = None,
 ) -> Event:
     return Event(
         time=time,
@@ -131,4 +140,5 @@ def make_event(
         target_id=target_id,
         source_item_instance_id=source_item_instance_id,
         effect_magnitude=effect_magnitude,
+        modifier_instance_id=modifier_instance_id,
     )
