@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 import {
@@ -14,6 +14,11 @@ type SimulationPreset = {
   name: string;
   description: string;
   request: SimulationRequest;
+};
+
+type TableRow = {
+  key: string;
+  cells: ReactNode[];
 };
 
 const BASELINE_DUEL: SimulationRequest = {
@@ -299,6 +304,45 @@ function formatIso(iso: string | undefined): string {
   return d.toLocaleString();
 }
 
+function DataTable({
+  emptyMessage,
+  headers,
+  rows,
+}: {
+  emptyMessage: string;
+  headers: string[];
+  rows: TableRow[];
+}) {
+  if (rows.length === 0) {
+    return <div>{emptyMessage}</div>;
+  }
+
+  return (
+    <table className="min-w-full text-left text-xs">
+      <thead>
+        <tr>
+          {headers.map((header, index) => (
+            <th key={`${index}-${header}`} className="px-2 py-1">
+              {header}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr key={row.key}>
+            {row.cells.map((cell, index) => (
+              <td key={`${row.key}-${index}`} className="px-2 py-1">
+                {cell}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export default function DebugPage() {
   const [selectedPresetId, setSelectedPresetId] = useState<string>(
     ITEM_STATUS_EFFECT_PRESETS[0].id,
@@ -374,8 +418,44 @@ export default function DebugPage() {
   const itemMetricRows = useMemo(() => {
     if (!activeRun) return [];
     const players = [activeRun.metrics.player_a, activeRun.metrics.player_b];
-    return players.flatMap((playerMetrics) => playerMetrics.item_metrics ?? []);
+    return players.flatMap((playerMetrics) =>
+      (playerMetrics.item_metrics ?? []).map((metric) => ({
+        key: `${metric.owner_player_id}-${metric.item_instance_id}`,
+        cells: [
+          metric.item_instance_id,
+          metric.owner_player_id,
+          summarizeMap(metric.events_triggered),
+          summarizeMap(metric.status_effects_received),
+        ],
+      })),
+    );
   }, [activeRun]);
+
+  const combatLogRows = useMemo(() => {
+    return filteredCombatLog.map((entry) => ({
+      key: `${entry.event_index}-${entry.time_seconds}-${entry.event_type}`,
+      cells: [
+        entry.time_seconds.toFixed(3),
+        entry.event_type,
+        entry.source_item_instance_id ?? "-",
+        entry.target_id ?? "-",
+      ],
+    }));
+  }, [filteredCombatLog]);
+
+  const modifierTraceRows = useMemo(() => {
+    return filteredModifierTrace.map((entry, index) => ({
+      key: `${entry.time}-${entry.item_id}-${entry.operation}-${entry.modifier_instance_id ?? "none"}-${index}`,
+      cells: [
+        entry.time.toFixed(3),
+        entry.operation,
+        entry.modifier ?? "-",
+        entry.item_id,
+        `${entry.old_modifier ?? "-"} → ${entry.new_modifier ?? "-"}`,
+        `${entry.pending_event_before ?? "-"} → ${entry.pending_event_after ?? "-"}`,
+      ],
+    }));
+  }, [filteredModifierTrace]);
 
   const runPayloadSummary = useMemo(() => {
     const parsed = parseRequest(requestText);
@@ -566,34 +646,13 @@ export default function DebugPage() {
 
               <div className="rounded border p-3">
                 <div className="text-xs font-medium opacity-70">Item Status Metrics</div>
-                {itemMetricRows.length === 0 ? (
-                  <div className="mt-2 text-xs">No item metrics captured yet.</div>
-                ) : (
-                  <div className="mt-2 overflow-auto">
-                    <table className="min-w-full text-left text-xs">
-                      <thead>
-                        <tr>
-                          <th className="px-2 py-1">item</th>
-                          <th className="px-2 py-1">owner</th>
-                          <th className="px-2 py-1">events triggered</th>
-                          <th className="px-2 py-1">received statuses</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {itemMetricRows.map((metric) => (
-                          <tr key={`${metric.owner_player_id}-${metric.item_instance_id}`}>
-                            <td className="px-2 py-1">{metric.item_instance_id}</td>
-                            <td className="px-2 py-1">{metric.owner_player_id}</td>
-                            <td className="px-2 py-1">{summarizeMap(metric.events_triggered)}</td>
-                            <td className="px-2 py-1">
-                              {summarizeMap(metric.status_effects_received)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                <div className="mt-2 overflow-auto">
+                  <DataTable
+                    emptyMessage="No item metrics captured yet."
+                    headers={["item", "owner", "events triggered", "received statuses"]}
+                    rows={itemMetricRows}
+                  />
+                </div>
               </div>
 
               <div className="rounded border p-3">
@@ -607,32 +666,11 @@ export default function DebugPage() {
                   />
                 </div>
                 <div className="mt-2 max-h-55 overflow-auto text-xs">
-                  {filteredCombatLog.length === 0 ? (
-                    <div>No combat log entries.</div>
-                  ) : (
-                    <table className="min-w-full text-left text-xs">
-                      <thead>
-                        <tr>
-                          <th className="px-2 py-1">t</th>
-                          <th className="px-2 py-1">event</th>
-                          <th className="px-2 py-1">source item</th>
-                          <th className="px-2 py-1">target</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredCombatLog.map((entry) => (
-                          <tr
-                            key={`${entry.event_index}-${entry.time_seconds}-${entry.event_type}`}
-                          >
-                            <td className="px-2 py-1">{entry.time_seconds.toFixed(3)}</td>
-                            <td className="px-2 py-1">{entry.event_type}</td>
-                            <td className="px-2 py-1">{entry.source_item_instance_id ?? "-"}</td>
-                            <td className="px-2 py-1">{entry.target_id ?? "-"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
+                  <DataTable
+                    emptyMessage="No combat log entries."
+                    headers={["t", "event", "source item", "target"]}
+                    rows={combatLogRows}
+                  />
                 </div>
               </div>
 
@@ -651,41 +689,18 @@ export default function DebugPage() {
                   {activeRun?.modifier_timer_trace?.length ?? 0}
                 </div>
                 <div className="mt-2 max-h-55 overflow-auto text-xs">
-                  {filteredModifierTrace.length === 0 ? (
-                    <div>No modifier trace entries.</div>
-                  ) : (
-                    <table className="min-w-full text-left text-xs">
-                      <thead>
-                        <tr>
-                          <th className="px-2 py-1">t</th>
-                          <th className="px-2 py-1">operation</th>
-                          <th className="px-2 py-1">modifier</th>
-                          <th className="px-2 py-1">item</th>
-                          <th className="px-2 py-1">old → new</th>
-                          <th className="px-2 py-1">pending before → after</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredModifierTrace.map((entry, index) => (
-                          <tr
-                            key={`${entry.time}-${entry.item_id}-${entry.operation}-${entry.modifier_instance_id ?? "none"}-${index}`}
-                          >
-                            <td className="px-2 py-1">{entry.time.toFixed(3)}</td>
-                            <td className="px-2 py-1">{entry.operation}</td>
-                            <td className="px-2 py-1">{entry.modifier ?? "-"}</td>
-                            <td className="px-2 py-1">{entry.item_id}</td>
-                            <td className="px-2 py-1">
-                              {entry.old_modifier ?? "-"} → {entry.new_modifier ?? "-"}
-                            </td>
-                            <td className="px-2 py-1">
-                              {entry.pending_event_before ?? "-"} →{" "}
-                              {entry.pending_event_after ?? "-"}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
+                  <DataTable
+                    emptyMessage="No modifier trace entries."
+                    headers={[
+                      "t",
+                      "operation",
+                      "modifier",
+                      "item",
+                      "old → new",
+                      "pending before → after",
+                    ]}
+                    rows={modifierTraceRows}
+                  />
                 </div>
               </div>
             </div>

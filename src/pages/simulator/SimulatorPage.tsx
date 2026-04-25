@@ -4,6 +4,10 @@ import { useMutation } from "@tanstack/react-query";
 import { postSimulate, type SimulationRequest, type SimulationResponse } from "@/api/endpoints";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
+type ItemMetric = NonNullable<
+  SimulationResponse["runs"][number]["metrics"]["player_a"]["item_metrics"]
+>[number];
+
 const samplePayload: SimulationRequest = {
   seed: 1337,
   runs: 3,
@@ -77,6 +81,20 @@ function formatSummary(payload: SimulationRequest): string[] {
   ];
 }
 
+function ItemMetricList({ items }: { items: ItemMetric[] }) {
+  if (items.length === 0) {
+    return <li>none</li>;
+  }
+
+  return items.map((itemMetric) => (
+    <li key={itemMetric.item_instance_id}>
+      {itemMetric.item_instance_id}: dmg {itemMetric.damage_done?.total ?? 0} (direct{" "}
+      {itemMetric.damage_done?.direct ?? 0}, burn {itemMetric.damage_done?.burn ?? 0}, poison{" "}
+      {itemMetric.damage_done?.poison ?? 0}), used {itemMetric.events_triggered?.used ?? 0}
+    </li>
+  ));
+}
+
 function ResponseSummary({ response }: { response: SimulationResponse }) {
   return (
     <div className="space-y-4 text-sm">
@@ -140,29 +158,20 @@ function ResponseSummary({ response }: { response: SimulationResponse }) {
                     <li>opponent burn damage: {playerADamage.burn}</li>
                     <li>opponent poison damage: {playerADamage.poison}</li>
                     <li>
-                      statuses applied: burn{" "}
-                      {playerAMetrics.status_effects_applied?.burn?.applications ?? 0}, poison{" "}
+                      statuses applied: burn {""}
+                      {playerAMetrics.status_effects_applied?.burn?.applications ?? 0}, poison {""}
                       {playerAMetrics.status_effects_applied?.poison?.applications ?? 0}
                     </li>
                     <li>
-                      statuses received: burn{" "}
-                      {playerAMetrics.status_effects_received?.burn?.applications ?? 0}, poison{" "}
+                      statuses received: burn {""}
+                      {playerAMetrics.status_effects_received?.burn?.applications ?? 0}, poison {""}
                       {playerAMetrics.status_effects_received?.poison?.applications ?? 0}
                     </li>
                     <li>final health: {playerA?.health ?? "n/a"}</li>
                   </ul>
                   <div className="mt-2 text-xs font-medium opacity-75">Player A item metrics</div>
                   <ul className="mt-1 space-y-1 text-xs">
-                    {playerAItems.map((itemMetric) => (
-                      <li key={itemMetric.item_instance_id}>
-                        {itemMetric.item_instance_id}: dmg {itemMetric.damage_done?.total ?? 0}{" "}
-                        (direct {itemMetric.damage_done?.direct ?? 0}, burn{" "}
-                        {itemMetric.damage_done?.burn ?? 0}, poison{" "}
-                        {itemMetric.damage_done?.poison ?? 0}), used{" "}
-                        {itemMetric.events_triggered?.used ?? 0}
-                      </li>
-                    ))}
-                    {playerAItems.length === 0 ? <li>none</li> : null}
+                    <ItemMetricList items={playerAItems} />
                   </ul>
                 </div>
                 <div>
@@ -177,29 +186,20 @@ function ResponseSummary({ response }: { response: SimulationResponse }) {
                     <li>opponent burn damage: {playerBDamage.burn}</li>
                     <li>opponent poison damage: {playerBDamage.poison}</li>
                     <li>
-                      statuses applied: burn{" "}
-                      {playerBMetrics.status_effects_applied?.burn?.applications ?? 0}, poison{" "}
+                      statuses applied: burn {""}
+                      {playerBMetrics.status_effects_applied?.burn?.applications ?? 0}, poison {""}
                       {playerBMetrics.status_effects_applied?.poison?.applications ?? 0}
                     </li>
                     <li>
-                      statuses received: burn{" "}
-                      {playerBMetrics.status_effects_received?.burn?.applications ?? 0}, poison{" "}
+                      statuses received: burn {""}
+                      {playerBMetrics.status_effects_received?.burn?.applications ?? 0}, poison {""}
                       {playerBMetrics.status_effects_received?.poison?.applications ?? 0}
                     </li>
                     <li>final health: {playerB?.health ?? "n/a"}</li>
                   </ul>
                   <div className="mt-2 text-xs font-medium opacity-75">Player B item metrics</div>
                   <ul className="mt-1 space-y-1 text-xs">
-                    {playerBItems.map((itemMetric) => (
-                      <li key={itemMetric.item_instance_id}>
-                        {itemMetric.item_instance_id}: dmg {itemMetric.damage_done?.total ?? 0}{" "}
-                        (direct {itemMetric.damage_done?.direct ?? 0}, burn{" "}
-                        {itemMetric.damage_done?.burn ?? 0}, poison{" "}
-                        {itemMetric.damage_done?.poison ?? 0}), used{" "}
-                        {itemMetric.events_triggered?.used ?? 0}
-                      </li>
-                    ))}
-                    {playerBItems.length === 0 ? <li>none</li> : null}
+                    <ItemMetricList items={playerBItems} />
                   </ul>
                 </div>
               </div>
@@ -219,8 +219,7 @@ function ResponseSummary({ response }: { response: SimulationResponse }) {
                       {entry.source_item_instance_id
                         ? `:${entry.source_item_instance_id}`
                         : ""}{" "}
-                      tgt=
-                      {entry.target_id ?? "-"} delta=
+                      tgt={entry.target_id ?? "-"} delta=
                       {entry.state_deltas
                         ?.map(
                           (delta) =>
@@ -265,66 +264,40 @@ export default function SimulatorPage() {
 
         <Card>
           <CardHeader className="border-b border-border">
-            <CardTitle>Request payload sent to backend</CardTitle>
+            <CardTitle>Request Preview</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 pt-4">
-            <div className="rounded border border-border p-3">
-              <div className="text-xs font-medium opacity-70">What we are trying to simulate</div>
-              <ul className="mt-2 space-y-1 text-sm">
-                {requestSummary.map((line) => (
-                  <li key={line}>{line}</li>
-                ))}
-              </ul>
+          <CardContent className="space-y-4 pt-4">
+            <div className="grid gap-2 sm:grid-cols-2">
+              {requestSummary.map((line) => (
+                <div key={line}>{line}</div>
+              ))}
             </div>
-            <div className="rounded border border-border p-3">
-              <div className="text-xs font-medium opacity-70">Raw request JSON</div>
-              <pre className="mt-2 overflow-auto text-xs">
-                {JSON.stringify(samplePayload, null, 2)}
-              </pre>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="border-b border-border">
-            <CardTitle>Run simulation</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 pt-4">
-            <div className="flex items-center gap-3">
+            <div className="flex gap-3">
               <button
                 type="button"
                 className="rounded border border-border px-3 py-2 text-sm"
                 onClick={() => simulateMutation.mutate()}
                 disabled={simulateMutation.isPending}
               >
-                {simulateMutation.isPending ? "Running..." : "Run Sample Simulation"}
+                {simulateMutation.isPending ? "Running..." : "Run Simulation"}
               </button>
               {simulateMutation.isError ? (
-                <span className="text-sm text-destructive">
-                  error: {simulateMutation.error.message}
-                </span>
+                <span className="text-sm text-red-600">{simulateMutation.error.message}</span>
               ) : null}
-            </div>
-
-            <div className="rounded border border-border p-3">
-              <div className="text-xs font-medium opacity-70">Prettified response</div>
-              <div className="mt-2">
-                {simulateMutation.data ? (
-                  <ResponseSummary response={simulateMutation.data} />
-                ) : (
-                  <div className="text-sm opacity-80">No response yet.</div>
-                )}
-              </div>
-            </div>
-
-            <div className="rounded border border-border p-3">
-              <div className="text-xs font-medium opacity-70">Raw response JSON</div>
-              <pre className="mt-2 overflow-auto text-xs">
-                {simulateMutation.data ? JSON.stringify(simulateMutation.data, null, 2) : "(none)"}
-              </pre>
             </div>
           </CardContent>
         </Card>
+
+        {simulateMutation.data ? (
+          <Card>
+            <CardHeader className="border-b border-border">
+              <CardTitle>Response Summary</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-4">
+              <ResponseSummary response={simulateMutation.data} />
+            </CardContent>
+          </Card>
+        ) : null}
       </section>
     </main>
   );

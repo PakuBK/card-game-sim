@@ -200,7 +200,7 @@ export interface components {
          * EffectTarget
          * @enum {string}
          */
-        EffectTarget: "self" | "opponent" | "self_item" | "opponent_item" | "enemy_adjacent" | "enemy_random";
+        EffectTarget: "self" | "opponent" | "self_item" | "opponent_item" | "enemy_adjacent" | "enemy_random" | "self_random" | "any_random" | "self_small_item" | "self_medium_item" | "self_large_item" | "self_left_most" | "self_right_most" | "enemy_small_item" | "enemy_medium_item" | "enemy_large_item" | "enemy_left_most" | "enemy_right_most" | "any_small_item" | "any_medium_item" | "any_large_item" | "any_left_most" | "any_right_most";
         /**
          * EffectType
          * @enum {string}
@@ -268,6 +268,35 @@ export interface components {
             status_effects_received?: {
                 [key: string]: number;
             };
+        };
+        /** ModifierTimerTraceEntry */
+        ModifierTimerTraceEntry: {
+            /** Time */
+            time: number;
+            /** Operation */
+            operation: string;
+            /** Item Id */
+            item_id: string;
+            /** Modifier */
+            modifier?: string | null;
+            /** Modifier Instance Id */
+            modifier_instance_id?: string | null;
+            /** Old Modifier */
+            old_modifier?: number | null;
+            /** New Modifier */
+            new_modifier?: number | null;
+            /** Duration */
+            duration?: number | null;
+            /** Pending Event Before */
+            pending_event_before?: number | null;
+            /** Pending Event After */
+            pending_event_after?: number | null;
+            /** Remaining Before */
+            remaining_before?: number | null;
+            /** Remaining Normal */
+            remaining_normal?: number | null;
+            /** Charge Amount */
+            charge_amount?: number | null;
         };
         /** NumericSummary */
         NumericSummary: {
@@ -422,6 +451,8 @@ export interface components {
             metrics: components["schemas"]["RunMetrics"];
             /** Combat Log */
             combat_log?: components["schemas"]["CombatLogEntry"][];
+            /** Modifier Timer Trace */
+            modifier_timer_trace?: components["schemas"]["ModifierTimerTraceEntry"][];
             /**
              * Combat Log Total Events
              * @default 0
