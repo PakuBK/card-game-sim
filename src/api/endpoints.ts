@@ -1,8 +1,8 @@
 import { fetchJson } from "./http";
 import type { components } from "./generated/openapi";
 
-export type HealthResponse = components["schemas"]["HealthResponse"];
-export type SimulationSchemaResponse = components["schemas"]["SimulationSchemaResponse"];
+type HealthResponse = components["schemas"]["HealthResponse"];
+type SimulationSchemaResponse = components["schemas"]["SimulationSchemaResponse"];
 export type SimulationRequest = components["schemas"]["SimulationRequest"];
 export type SimulationResponse = components["schemas"]["SimulationResponse"];
 
