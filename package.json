@@ -13,6 +13,7 @@
     "test:backend": "backend/.venv/Scripts/python -m unittest discover -s backend/tests -p \"test_*.py\"",
     "debug:item-status": "backend/.venv/Scripts/python backend/scripts/debug_item_status_scenarios.py",
     "test:all": "vp run test:frontend && vp run test:backend",
+    "fallow": "vp exec fallow --summary",
     "build": "tsc && vp build",
     "preview": "vp preview"
   },

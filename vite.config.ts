@@ -28,9 +28,21 @@ export default defineConfig({
   },
   lint: {
     options: { typeAware: true, typeCheck: true },
-    ignorePatterns: ["dist/**", "src/routeTree.gen.ts"],
+    ignorePatterns: [
+      "dist/**",
+      "src/routeTree.gen.ts",
+      "src/api/generated/**",
+      ".fallowrc.json",
+      ".github/**",
+    ],
   },
   fmt: {
-    ignorePatterns: ["dist/**", "src/routeTree.gen.ts"],
+    ignorePatterns: [
+      "dist/**",
+      "src/routeTree.gen.ts",
+      "src/api/generated/**",
+      ".fallowrc.json",
+      ".github/**",
+    ],
   },
 });
