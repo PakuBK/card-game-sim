@@ -21,6 +21,14 @@ type TableRow = {
   cells: ReactNode[];
 };
 
+type ComparisonMetric = {
+  key: string;
+  label: string;
+  leftValue: string;
+  rightValue: string;
+  delta: string;
+};
+
 const BASELINE_DUEL: SimulationRequest = {
   seed: 1337,
   runs: 3,
@@ -304,6 +312,94 @@ function formatIso(iso: string | undefined): string {
   return d.toLocaleString();
 }
 
+function asPercent(value: number | undefined): string {
+  if (typeof value !== "number") return "-";
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function asNumber(value: number | undefined, digits = 2): string {
+  if (typeof value !== "number") return "-";
+  return value.toFixed(digits);
+}
+
+function asSigned(value: number | undefined, digits = 2, suffix = ""): string {
+  if (typeof value !== "number") return "-";
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toFixed(digits)}${suffix}`;
+}
+
+function buildComparisonMetrics(
+  left: SimulationResponse | undefined,
+  right: SimulationResponse | undefined,
+): ComparisonMetric[] {
+  if (!left || !right) return [];
+  const leftSummary = left.summary;
+  const rightSummary = right.summary;
+
+  const leftPerformance = leftSummary.performance;
+  const rightPerformance = rightSummary.performance;
+
+  return [
+    {
+      key: "a-win-rate",
+      label: "Player A win rate",
+      leftValue: asPercent(leftSummary.player_a_win_rate),
+      rightValue: asPercent(rightSummary.player_a_win_rate),
+      delta: asSigned(
+        (rightSummary.player_a_win_rate - leftSummary.player_a_win_rate) * 100,
+        1,
+        "pp",
+      ),
+    },
+    {
+      key: "b-win-rate",
+      label: "Player B win rate",
+      leftValue: asPercent(leftSummary.player_b_win_rate),
+      rightValue: asPercent(rightSummary.player_b_win_rate),
+      delta: asSigned(
+        (rightSummary.player_b_win_rate - leftSummary.player_b_win_rate) * 100,
+        1,
+        "pp",
+      ),
+    },
+    {
+      key: "draw-rate",
+      label: "Draw rate",
+      leftValue: asPercent(leftSummary.draw_rate),
+      rightValue: asPercent(rightSummary.draw_rate),
+      delta: asSigned((rightSummary.draw_rate - leftSummary.draw_rate) * 100, 1, "pp"),
+    },
+    {
+      key: "avg-duration",
+      label: "Avg duration (s)",
+      leftValue: asNumber(leftSummary.duration_seconds.average, 3),
+      rightValue: asNumber(rightSummary.duration_seconds.average, 3),
+      delta: asSigned(
+        rightSummary.duration_seconds.average - leftSummary.duration_seconds.average,
+        3,
+      ),
+    },
+    {
+      key: "p95-duration",
+      label: "P95 duration (s)",
+      leftValue: asNumber(leftSummary.duration_seconds.p95, 3),
+      rightValue: asNumber(rightSummary.duration_seconds.p95, 3),
+      delta: asSigned(rightSummary.duration_seconds.p95 - leftSummary.duration_seconds.p95, 3),
+    },
+    {
+      key: "avg-events",
+      label: "Avg events per run",
+      leftValue: asNumber(leftPerformance?.average_events_per_run, 1),
+      rightValue: asNumber(rightPerformance?.average_events_per_run, 1),
+      delta: asSigned(
+        (rightPerformance?.average_events_per_run ?? 0) -
+          (leftPerformance?.average_events_per_run ?? 0),
+        1,
+      ),
+    },
+  ];
+}
+
 function DataTable({
   emptyMessage,
   headers,
@@ -354,6 +450,12 @@ export default function DebugPage() {
   const [activeRunIndex, setActiveRunIndex] = useState<number>(0);
   const [combatLogFilter, setCombatLogFilter] = useState<string>("");
   const [modifierTraceFilter, setModifierTraceFilter] = useState<string>("");
+  const [leftComparisonPresetId, setLeftComparisonPresetId] = useState<string>(
+    ITEM_STATUS_EFFECT_PRESETS[0].id,
+  );
+  const [rightComparisonPresetId, setRightComparisonPresetId] = useState<string>(
+    ITEM_STATUS_EFFECT_PRESETS[1].id,
+  );
 
   const healthQuery = useQuery({
     queryKey: ["health"],
@@ -370,6 +472,22 @@ export default function DebugPage() {
     mutationFn: async (request: SimulationRequest) => postSimulate(request),
     onSuccess: () => {
       setActiveRunIndex(0);
+    },
+  });
+
+  const compareMutation = useMutation({
+    mutationFn: async ({
+      leftRequest,
+      rightRequest,
+    }: {
+      leftRequest: SimulationRequest;
+      rightRequest: SimulationRequest;
+    }) => {
+      const [leftResponse, rightResponse] = await Promise.all([
+        postSimulate(leftRequest),
+        postSimulate(rightRequest),
+      ]);
+      return { leftResponse, rightResponse };
     },
   });
 
@@ -463,6 +581,27 @@ export default function DebugPage() {
     return `seed=${parsed.request.seed} runs=${parsed.request.runs} defs=${parsed.request.item_definitions.length}`;
   }, [requestText]);
 
+  const leftComparisonPreset = useMemo(
+    () => ITEM_STATUS_EFFECT_PRESETS.find((preset) => preset.id === leftComparisonPresetId),
+    [leftComparisonPresetId],
+  );
+
+  const rightComparisonPreset = useMemo(
+    () => ITEM_STATUS_EFFECT_PRESETS.find((preset) => preset.id === rightComparisonPresetId),
+    [rightComparisonPresetId],
+  );
+
+  const comparisonRows = useMemo(() => {
+    const metrics = buildComparisonMetrics(
+      compareMutation.data?.leftResponse,
+      compareMutation.data?.rightResponse,
+    );
+    return metrics.map((metric) => ({
+      key: metric.key,
+      cells: [metric.label, metric.leftValue, metric.rightValue, metric.delta],
+    }));
+  }, [compareMutation.data?.leftResponse, compareMutation.data?.rightResponse]);
+
   function loadPreset(presetId: string): void {
     const preset = ITEM_STATUS_EFFECT_PRESETS.find((entry) => entry.id === presetId);
     if (!preset) return;
@@ -479,6 +618,15 @@ export default function DebugPage() {
     }
     setParseError(null);
     simulateMutation.mutate(parsed.request);
+  }
+
+  function runComparison(): void {
+    const leftRequest = leftComparisonPreset?.request;
+    const rightRequest = rightComparisonPreset?.request;
+    if (!leftRequest || !rightRequest) {
+      return;
+    }
+    compareMutation.mutate({ leftRequest, rightRequest });
   }
 
   return (
@@ -611,6 +759,70 @@ export default function DebugPage() {
                     {formatJson(simulateMutation.data.summary)}
                   </pre>
                 ) : null}
+              </div>
+
+              <div className="rounded border p-3">
+                <div className="text-xs font-medium opacity-70">Build Comparison</div>
+                <div className="mt-2 grid gap-2 text-xs sm:grid-cols-2">
+                  <label className="flex flex-col gap-1">
+                    <span className="opacity-80">Left build</span>
+                    <select
+                      className="rounded border px-2 py-1"
+                      value={leftComparisonPresetId}
+                      onChange={(event) => setLeftComparisonPresetId(event.target.value)}
+                    >
+                      {ITEM_STATUS_EFFECT_PRESETS.map((preset) => (
+                        <option key={`left-${preset.id}`} value={preset.id}>
+                          {preset.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="flex flex-col gap-1">
+                    <span className="opacity-80">Right build</span>
+                    <select
+                      className="rounded border px-2 py-1"
+                      value={rightComparisonPresetId}
+                      onChange={(event) => setRightComparisonPresetId(event.target.value)}
+                    >
+                      {ITEM_STATUS_EFFECT_PRESETS.map((preset) => (
+                        <option key={`right-${preset.id}`} value={preset.id}>
+                          {preset.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="rounded border px-3 py-2 text-sm"
+                    onClick={runComparison}
+                    disabled={compareMutation.isPending}
+                  >
+                    {compareMutation.isPending ? "Comparing..." : "Run Comparison"}
+                  </button>
+                  {compareMutation.isError ? (
+                    <span className="text-xs">error: {compareMutation.error.message}</span>
+                  ) : null}
+                </div>
+
+                <div className="mt-2 text-xs opacity-80">
+                  left: {leftComparisonPreset?.description ?? "n/a"}
+                </div>
+                <div className="text-xs opacity-80">
+                  right: {rightComparisonPreset?.description ?? "n/a"}
+                </div>
+
+                <div className="mt-2 overflow-auto">
+                  <DataTable
+                    emptyMessage="Run comparison to view aggregate deltas."
+                    headers={["metric", "left", "right", "delta (right-left)"]}
+                    rows={comparisonRows}
+                  />
+                </div>
               </div>
 
               <div className="rounded border p-3">
