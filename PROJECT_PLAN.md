@@ -6,12 +6,12 @@ Build a data-driven combat sandbox inspired by _The Bazaar_. The project is not 
 
 ## Execution Snapshot
 
-- Current active phase: Phase 4 Debugging and Analysis UX (early)
+- Current active phase: Phase 4 Debugging and Analysis UX (mid)
 - Quick status:
   - Phase 1 Contract and Scope: complete
   - Phase 2 Core Engine: complete
   - Phase 2.5 Item Status Effects Extension: complete
-  - Phase 3 API and Frontend Integration: mostly complete
+  - Phase 3 API and Frontend Integration: complete
   - Phase 4 Debugging and Analysis UX: in progress
   - Phase 5 Scale and Packaging: not started
 
@@ -28,12 +28,26 @@ The repository now contains a working deterministic combat simulation foundation
 - Combat log support with `combat_log_limit` and truncation metadata
 - Modifier timer trace emitted per run for timer debugging
 - OpenAPI-generated TypeScript contracts wired into frontend API calls
+- Typed frontend HTTP error handling with parsed API error bodies
 - Frontend debug surfaces:
   - `src/pages/debug/DebugPage.tsx` for schema viewing, preset payloads, per-run logs, and modifier traces
-  - `src/pages/simulator/SimulatorPage.tsx` for request/response inspection
+  - `src/pages/simulator/SimulatorPage.tsx` for visual build authoring, matchup execution, and build comparison
+- Simulator workspace authoring features:
+  - local workspace persistence for builds/settings/comparison state
+  - build library CRUD for both sides (new/select/duplicate/delete)
+  - editable item definitions, effects, placements, statuses, and player stats
+  - board preview with click-to-place and click-to-move interactions
+  - local workspace validation before run/compare execution
+- Inline API error guidance:
+  - backend detail locations mapped to editor sections (stats, board, placements, items, statuses, settings)
+  - surfaced for both current matchup and build comparison failure paths
+- Damage comparison chart:
+  - side-by-side median + overlay run curves for build comparison results
 - Backend deterministic and mechanics tests in `backend/tests`
 
 The next stage is to move from debug-oriented JSON workflows to a dedicated visual authoring experience while preserving deterministic contracts and traceability.
+
+Update: a dedicated visual authoring workspace now exists in the simulator page. The next stage is to harden that UX and expand analysis depth.
 
 ## Product Direction
 
@@ -54,12 +68,14 @@ What is aligned today:
 - Core status and timer-modifier mechanics
 - Batch and single-run style outputs via one simulation endpoint
 - Stable metrics foundation for future analysis features
+- Visual authoring and comparison workflow on the simulator page
+- Section-level API error guidance mapped from backend validation details
 
 What is still missing to meet the intended UX:
 
-- Visual item and board editor (current flow is JSON-first)
-- Rich strategy comparison and distribution analysis UI
-- Guided validation and error UX in the frontend authoring flow
+- Broader distribution analysis (beyond current median + single overlay comparison)
+- More advanced board interactions (drag/drop and richer placement ergonomics)
+- Expanded export and filtering workflows for logs and traces
 - Expanded automated regression coverage and packaging hardening
 
 ## Architecture Direction
@@ -67,13 +83,13 @@ What is still missing to meet the intended UX:
 ### Frontend
 
 - Keep TanStack Router + React Query as the data/navigation base
-- Evolve from JSON textareas and fixed sample payloads into visual builders:
-  - Item definition editor
-  - Board placement editor with size and slot constraints
-  - Player setup editor for stats and initial statuses
+- Continue evolving the simulator visual builders:
+  - Item definition editor (implemented)
+  - Board placement editor with size and slot constraints (implemented, with click-to-place/move)
+  - Player setup editor for stats and initial statuses (implemented)
 - Retain advanced debug surfaces (`DebugPage`) for engine diagnostics
-- Add comparative analysis views for multi-run outcomes
-- Surface backend validation errors inline in form workflows
+- Expand comparative analysis views for multi-run outcomes
+- Continue improving inline validation and API guidance ergonomics
 
 ### Backend
 
@@ -182,10 +198,9 @@ Status: complete.
 - Generate frontend types from OpenAPI
 - Build the editor UI for item and board configuration
 
-Status: mostly complete.
+Status: complete.
 
-- Done: real API routes, typed frontend API client, generated OpenAPI contracts, integrated debug pages.
-- Remaining from original phase intent: true visual editor workflows for items/boards/players.
+- Done: real API routes, typed frontend API client, generated OpenAPI contracts, integrated debug pages, and visual simulator authoring workflows for items/boards/players.
 
 ### Phase 4: Debugging and Analysis UX
 
@@ -195,8 +210,15 @@ Status: mostly complete.
 
 Status: in progress.
 
-- Done: single-run inspection, combat logs, modifier timer traces, and per-run metric tables.
-- Next: side-by-side build comparisons, richer aggregate visualization, and frontend validation UX polish.
+- Done:
+  - single-run inspection, combat logs, modifier timer traces, and per-run metric tables
+  - visual simulator workspace with build authoring and comparison execution
+  - side-by-side build comparison with median + overlay damage curves
+  - inline API error guidance mapped to concrete editor sections
+- Next:
+  - richer aggregate/distribution analytics (percentile bands/histograms)
+  - additional UX polish for board authoring interactions and discoverability
+  - export/filter improvements for logs and traces
 
 ### Phase 5: Scale and Packaging
 
@@ -223,26 +245,27 @@ Current quality signal:
 
 - `vp check` is clean.
 - Core backend behavior has targeted tests for deterministic outcomes and status/timer interactions.
-- Additional frontend and contract-regression tests are still needed as UX complexity grows.
+- Additional frontend interaction coverage and contract-regression tests are still needed as UX complexity grows.
 
 ## Next 30-60 Day Priorities
 
-1. Build visual authoring flows
+1. Harden simulator authoring UX
 
-- Item/effect editor
-- Board placement editor with occupancy validation
-- Player stats and initial status editor
+- Improve board interaction affordances (selection cues, move/cancel behavior, keyboard support)
+- Add regression coverage for placement helpers and workspace transformations
+- Ensure error guidance remains stable as backend contract details evolve
 
 2. Improve analysis UX
 
-- Run comparison views
-- Aggregated distributions/charts from batch results
-- Better filtering/export for combat logs and timer traces
+- Expand comparison views with richer distribution summaries
+- Add aggregated distributions/charts from batch results
+- Add better filtering/export for combat logs and timer traces
 
 3. Strengthen validation and regression confidence
 
-- Frontend validation aligned to backend schema constraints
-- Contract and determinism regression tests around high-risk mechanics
+- Expand frontend validation aligned to backend schema constraints
+- Add contract and determinism regression tests around high-risk mechanics
+- Add frontend tests for API error mapping and section-level surfacing
 
 4. Prepare for scale phase entry
 
