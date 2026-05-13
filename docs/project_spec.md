@@ -111,6 +111,7 @@ Each player has:
 - Shield
 - Regeneration
 - Status effects (Burn, Poison)
+- Skills (static combat passives)
 
 ## Boards
 
@@ -389,6 +390,18 @@ Key properties of the time model:
 - Timer modifiers cause **event rescheduling**
 - The system avoids timestep iteration entirely
 
+---
+
+### Deterministic Randomness
+
+Some combat outcomes require random rolls (for example, **Crit**).
+
+All random decisions must be deterministic per run:
+
+- Each run uses a deterministic RNG initialized from seed + run index.
+- Every random roll in that run, including crit rolls, uses that RNG stream.
+- Identical request payload and seed must produce identical outcomes and metrics.
+
 This model allows the engine to simulate large numbers of fights efficiently while maintain
 
 ---
@@ -412,6 +425,7 @@ Items may also interact with:
 - Random items
 - Specific item types
 - Enemy items
+- Player skills
 
 #### Item Size
 
@@ -420,6 +434,87 @@ Items may also interact with:
 - Items can be placed with space between them if enough space is on the board.
 - Item position is a vital part of the simulation.
 - Item position can't be switched in the fight, there position is set beforehand.
+
+#### Item Tags
+
+Items may include tags to support targeting and conditional effects.
+
+Examples:
+
+- weapon
+- armor
+- support
+
+Tag-aware effects and skills (for example "large item with weapon tag") must be representable as data constraints.
+
+#### Item Crit Stats
+
+Items may have crit-related stats:
+
+- base_crit_chance (definition-time default)
+- runtime_crit_chance (mutable during combat)
+
+When a use event crits, the use is considered a **critical use**.
+
+Critical use rule:
+
+- Crit doubles effect value for: Damage, Poison, Heal, Regeneration, Shield, Burn.
+
+Crit behavior requirements:
+
+- Crit chance is clamped to 0%..100%.
+- A crit roll is made per item use event.
+- Crit rolls must come from the seeded deterministic RNG stream for the run.
+
+#### Ammunition
+
+Items may optionally use ammunition.
+
+Ammo behavior:
+
+- If an item has ammo enabled, each successful use consumes 1 ammo.
+- If ammo is 0, the item cannot trigger another use event.
+- Reload effects can restore ammo to the item.
+
+Immediate-use reload rule:
+
+- If an item is reloaded after its next use would already have occurred (for example while blocked by empty ammo), reloading must trigger its use effect immediately.
+
+This keeps reload semantics aligned with event-queue timing expectations.
+
+---
+
+## Skills
+
+Skills are **static effects attached to the player**, not board items.
+
+Properties:
+
+- Skills are active for the entire fight unless explicitly limited by conditions.
+- Skills react to combat events and can apply effects, counters, and one-time triggers.
+- Skills are modeled as data and interpreted by the engine, following the same deterministic rules as items.
+
+Skill capabilities that must be representable:
+
+- Event-driven reactions (for example: "when you trigger poison")
+- Counter-limited effects (for example: first 3 times, first 5 times)
+- Per-fight one-time conditions (for example: first time below half health)
+- Conditional filters (for example: large item with weapon tag, leftmost weapon)
+- Item interactions (for example: charge item cooldown, reload item)
+
+Examples the system must support:
+
+- Skill A: When you trigger a poison effect, apply Regen 2 to yourself.
+- Skill B: The first 5 times you crit, charge an item 1 second.
+- Skill C: Double the damage of every large item with the weapon tag.
+- Skill D: The first time you fall below half health each fight, double the damage of your leftmost weapon for the fight.
+- Skill E: The first 3 times you Freeze each fight, reload an item on your board.
+
+Implementation notes:
+
+- Skills should maintain per-fight runtime counters/flags.
+- Skills share the same event stream and deterministic seeded randomness model as items.
+- Skill-triggered effects must produce normal combat telemetry/metrics entries.
 
 ---
 
@@ -690,6 +785,38 @@ Since items are user-generated, they must be expressed as **data structures**.
 
 Each item definition will consist of several components.
 
+## 5.0 Current API Shape (Implemented)
+
+The current backend contract represents item behavior as **abilities** (trigger + effects). The legacy top-level `effects` field is not supported.
+
+Conceptual shape:
+
+```
+ItemDefinition {
+  id
+  name
+  size
+  cooldown_seconds
+  initial_delay_seconds?
+  abilities: [
+    {
+      trigger: { type: "timed_use" | "combat_start" | "adjacent_item_modifier_start", modifier_type? }
+      effects: [ ItemEffect, ... ]
+    },
+    ...
+  ]
+  tags?: [string, ...]
+}
+
+ItemEffect {
+  type
+  target
+  magnitude
+  targeting_mode: "single" | "all" | "random_n" (default: single)
+  target_count?: number (required when targeting_mode is random_n)
+}
+```
+
 ## 5.1 Stats (Values)
 
 Stats represent the **numerical attributes of the item**.
@@ -704,6 +831,8 @@ Examples:
 - Heal
 - Ammo
 - Multicast
+- Base Crit Chance
+- Runtime Crit Chance
 
 Stats serve as inputs for item effects.
 
@@ -715,8 +844,10 @@ During combat, items maintain runtime state such as:
 
 - Remaining cooldown
 - Active status effects
-- Remaining ammo
+- Remaining ammo (planned)
 - Temporary stat modifications
+- Skill-derived temporary modifiers (planned)
+- Crit-related runtime state (planned)
 
 This state evolves dynamically throughout the fight.
 
@@ -728,11 +859,11 @@ Triggers define **when an item reacts to an event**.
 A trigger listens for a specific **combat event** and executes its effects when conditions are satisfied.
 Typical trigger events include:
 
-- Item use
-- Status effect application
-- Damage dealt
-- Item hasted/frozen/slowed
-- Player actions
+- timed_use (scheduled by cooldown + initial delay)
+- combat_start (time 0 event)
+- adjacent_item_modifier_start (react when an adjacent item receives slow/haste/freeze)
+
+Additional trigger types may be added later, but must preserve deterministic ordering.
 
 Triggers follow a general structure:
 
@@ -757,6 +888,7 @@ Common effect types include:
 - Apply Shield
 - Modify Item Stats
 - Charge Item Cooldown
+- Reload Item Ammo
 - Apply Item Status Effect
 
 Effects target entities such as:
@@ -768,6 +900,11 @@ Effects target entities such as:
 - Adjacent items
 - Left/Leftmost/Right/Rightmost item
 - Random item(s)
+
+Multi-target execution is controlled by:
+
+- targeting_mode: single | all | random_n
+- target_count: required for random_n
 
 ---
 
@@ -795,22 +932,66 @@ This ensures the system remains **safe and deterministic**.
 
 ---
 
+## 5.6 Skill Definition Model
+
+Skills follow the same data-driven architecture as items.
+
+A skill definition should include:
+
+- id and name
+- owner scope (player-level)
+- trigger event(s)
+- optional conditions and filters
+- effect list
+- optional per-fight limits/counters
+
+General structure:
+
+```
+Skill {
+  id
+  name
+  triggers[]
+  conditions[]
+  effects[]
+  limits {
+    max_triggers_per_fight
+    one_time_per_fight
+  }
+}
+```
+
+Skills are evaluated from the same event stream used by item triggers.
+
+---
+
 # 6. Event-Driven Combat Engine
 
 The combat simulation operates as an **event-driven system**.
 During combat, events are continuously generated, such as:
 
+- Combat start
 - Item use
+- Ability execution (non-timed triggers)
 - Damage applied
 - Status effects triggered
 - Cooldown completion
 - Time ticks
 
+Planned event extensions:
+
+- Crit rolled
+- Ammo consumed
+- Reload applied
+- Skill trigger evaluation
+
 Items subscribe to these events through their triggers.
+Skills also subscribe to these events through player-level trigger rules.
+
 When an event occurs:
 
 1. The event is dispatched.
-2. All relevant triggers are evaluated.
+2. All relevant item and skill triggers are evaluated.
 3. Matching triggers execute their effects.
 4. Effects may generate new events.
 
@@ -829,6 +1010,7 @@ Used for inspecting combat interactions step-by-step.
 Provides:
 
 - Event timeline
+- Includes the combat_start event at time 0
 - Trigger activations
 - Damage logs
 - Status changes
@@ -858,6 +1040,13 @@ Required baseline telemetry:
 - Status effects received per item (groundwork field for item statuses such as slow, haste, freeze)
 - Damage applied to the opponent as a total
 - Damage applied to the opponent split into direct, burn, and poison parts
+
+Required feature-extension telemetry:
+
+- Crit rolls and crit successes per item
+- Damage and status contribution caused by crit multipliers
+- Ammo consumed and reload events per item
+- Skill trigger counts and skill-generated effect breakdowns
 
 Design notes:
 
