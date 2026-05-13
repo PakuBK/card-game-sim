@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class HealthResponse(BaseModel):
@@ -48,29 +48,74 @@ class EffectType(str, Enum):
 
 
 class EffectTarget(str, Enum):
+    # Player targets
     SELF = "self"
     OPPONENT = "opponent"
+
+    # Item targets
     SELF_ITEM = "self_item"
     OPPONENT_ITEM = "opponent_item"
+
+    # Adjacency / randomness
     ENEMY_ADJACENT = "enemy_adjacent"
     ENEMY_RANDOM = "enemy_random"
     SELF_RANDOM = "self_random"
     ANY_RANDOM = "any_random"
+
+    ITEM_TO_LEFT = "item_to_left"
+    ITEM_TO_RIGHT = "item_to_right"
+
+    # Size filters
     SELF_SMALL_ITEM = "self_small_item"
     SELF_MEDIUM_ITEM = "self_medium_item"
     SELF_LARGE_ITEM = "self_large_item"
-    SELF_LEFT_MOST = "self_left_most"
-    SELF_RIGHT_MOST = "self_right_most"
     ENEMY_SMALL_ITEM = "enemy_small_item"
     ENEMY_MEDIUM_ITEM = "enemy_medium_item"
     ENEMY_LARGE_ITEM = "enemy_large_item"
-    ENEMY_LEFT_MOST = "enemy_left_most"
-    ENEMY_RIGHT_MOST = "enemy_right_most"
     ANY_SMALL_ITEM = "any_small_item"
     ANY_MEDIUM_ITEM = "any_medium_item"
     ANY_LARGE_ITEM = "any_large_item"
+
+    # Board position selectors
+    SELF_LEFT_MOST = "self_left_most"
+    SELF_RIGHT_MOST = "self_right_most"
+    ENEMY_LEFT_MOST = "enemy_left_most"
+    ENEMY_RIGHT_MOST = "enemy_right_most"
     ANY_LEFT_MOST = "any_left_most"
     ANY_RIGHT_MOST = "any_right_most"
+
+    # Trigger-context targets (used by event-bound abilities)
+    TRIGGER_ITEM = "trigger_item"
+    TRIGGER_SOURCE_ITEM = "trigger_source_item"
+
+
+class TargetingMode(str, Enum):
+    SINGLE = "single"
+    ALL = "all"
+    RANDOM_N = "random_n"
+
+
+class ItemTriggerType(str, Enum):
+    TIMED_USE = "timed_use"
+    COMBAT_START = "combat_start"
+    ADJACENT_ITEM_MODIFIER_START = "adjacent_item_modifier_start"
+
+
+class ItemModifierType(str, Enum):
+    SLOW = "slow"
+    HASTE = "haste"
+    FREEZE = "freeze"
+
+
+class ItemTrigger(BaseModel):
+    type: ItemTriggerType
+    modifier_type: ItemModifierType | None = None
+
+    @model_validator(mode="after")
+    def validate_modifier_trigger(self) -> "ItemTrigger":
+        if self.type == ItemTriggerType.ADJACENT_ITEM_MODIFIER_START and self.modifier_type is None:
+            raise ValueError("modifier_type is required for adjacent_item_modifier_start triggers")
+        return self
 
 
 class RunStopReason(str, Enum):
@@ -81,7 +126,13 @@ class RunStopReason(str, Enum):
 
 class ScopeLimits(BaseModel):
     statuses: list[StatusType] = Field(default_factory=lambda: [StatusType.BURN, StatusType.POISON])
-    trigger_modes: list[str] = Field(default_factory=lambda: ["timed_use_only"])
+    trigger_modes: list[str] = Field(
+        default_factory=lambda: [
+            "timed_use",
+            "combat_start",
+            "adjacent_item_modifier_start",
+        ]
+    )
     effect_types: list[EffectType] = Field(
         default_factory=lambda: [
             EffectType.DAMAGE,
@@ -104,14 +155,42 @@ class ItemEffect(BaseModel):
     target: EffectTarget
     magnitude: float = Field(gt=0)
 
+    # Optional multi-target controls (default preserves previous behavior).
+    targeting_mode: TargetingMode = TargetingMode.SINGLE
+    target_count: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def validate_target_count(self) -> "ItemEffect":
+        if self.targeting_mode == TargetingMode.RANDOM_N and self.target_count is None:
+            raise ValueError("target_count is required when targeting_mode is random_n")
+        if self.targeting_mode != TargetingMode.RANDOM_N and self.target_count is not None:
+            raise ValueError("target_count is only allowed when targeting_mode is random_n")
+        return self
+
+
+class ItemAbility(BaseModel):
+    trigger: ItemTrigger
+    effects: list[ItemEffect] = Field(min_length=1)
+
 
 class ItemDefinition(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     id: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=128)
     size: int = Field(ge=1, le=3)
     cooldown_seconds: float = Field(gt=0)
     initial_delay_seconds: float | None = Field(default=None, ge=0)
-    effects: list[ItemEffect] = Field(min_length=1)
+
+    # Event-bound abilities (including timed-use).
+    abilities: list[ItemAbility] = Field(min_length=1)
+
+    # Optional tags/types for future filtering and trigger logic.
+    tags: list[str] = Field(default_factory=list)
+
+    # Note: cooldown_seconds / initial_delay_seconds are only used when the item has a
+    # timed-use ability, but are kept required for now to keep the item definition shape
+    # simple.
 
 
 class BoardItemPlacement(BaseModel):
@@ -239,7 +318,7 @@ class CombatLogEntry(BaseModel):
     event_index: int
     time_seconds: float
     event_type: str
-    source_player_id: Literal["player_a", "player_b"]
+    source_player_id: Literal["player_a", "player_b", "system"]
     source_item_instance_id: str | None = None
     target_id: str | None = None
     state_deltas: list[CombatLogStateDelta] = Field(default_factory=list)

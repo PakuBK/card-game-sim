@@ -34,11 +34,16 @@ def sample_request_payload() -> dict:
                 "name": "Jab",
                 "size": 1,
                 "cooldown_seconds": 1.0,
-                "effects": [
+                "abilities": [
                     {
-                        "type": "damage",
-                        "target": "opponent",
-                        "magnitude": 3,
+                        "trigger": {"type": "timed_use"},
+                        "effects": [
+                            {
+                                "type": "damage",
+                                "target": "opponent",
+                                "magnitude": 3,
+                            }
+                        ],
                     }
                 ],
             }
@@ -83,11 +88,15 @@ def sample_request_payload() -> dict:
     }
 
 
+def timed_use_ability(effects: list[dict]) -> list[dict]:
+    return [{"trigger": {"type": "timed_use"}, "effects": effects}]
+
+
 class SimulationContractTests(unittest.TestCase):
     def test_scope_contract_limits(self) -> None:
         schema = SimulationSchemaResponse()
         self.assertEqual([s.value for s in schema.scope.statuses], ["burn", "poison"])
-        self.assertEqual(schema.scope.trigger_modes, ["timed_use_only"])
+        self.assertIn("timed_use", schema.scope.trigger_modes)
         self.assertEqual(schema.scope.percentile_set, [50, 90, 95])
 
     def test_request_validation_requires_player_a_and_player_b(self) -> None:
@@ -115,13 +124,15 @@ class SimulationContractTests(unittest.TestCase):
                 "name": "Burst",
                 "size": 1,
                 "cooldown_seconds": 1.0,
-                "effects": [
-                    {
-                        "type": "damage",
-                        "target": "opponent",
-                        "magnitude": 10,
-                    }
-                ],
+                "abilities": timed_use_ability(
+                    [
+                        {
+                            "type": "damage",
+                            "target": "opponent",
+                            "magnitude": 10,
+                        }
+                    ]
+                ),
             }
         ]
         payload["players"][0]["stats"] = {"max_health": 10}
@@ -164,13 +175,15 @@ class SimulationContractTests(unittest.TestCase):
                 "name": "Placeholder",
                 "size": 1,
                 "cooldown_seconds": 99,
-                "effects": [
-                    {
-                        "type": "heal",
-                        "target": "self",
-                        "magnitude": 1,
-                    }
-                ],
+                "abilities": timed_use_ability(
+                    [
+                        {
+                            "type": "heal",
+                            "target": "self",
+                            "magnitude": 1,
+                        }
+                    ]
+                ),
             }
         ]
         payload["players"][0]["stats"] = {
@@ -206,18 +219,20 @@ class SimulationContractTests(unittest.TestCase):
                 "size": 1,
                 "cooldown_seconds": 99,
                 "initial_delay_seconds": 0,
-                "effects": [
-                    {
-                        "type": "damage",
-                        "target": "opponent",
-                        "magnitude": 3,
-                    },
-                    {
-                        "type": "apply_burn",
-                        "target": "opponent",
-                        "magnitude": 2,
-                    },
-                ],
+                "abilities": timed_use_ability(
+                    [
+                        {
+                            "type": "damage",
+                            "target": "opponent",
+                            "magnitude": 3,
+                        },
+                        {
+                            "type": "apply_burn",
+                            "target": "opponent",
+                            "magnitude": 2,
+                        },
+                    ]
+                ),
             }
         ]
         payload["players"][0]["board"]["placements"] = [
@@ -275,10 +290,11 @@ class SimulationContractTests(unittest.TestCase):
         self.assertEqual(run.players[0].health, 95.0)
         self.assertEqual(run.players[0].shield, 10.0)
         self.assertEqual(run.players[0].burn, 9.0)
-        self.assertEqual(run.combat_log[0].event_type, "burn_tick")
-        self.assertEqual(run.combat_log[0].state_deltas[0].health_delta, -5.0)
-        self.assertEqual(run.combat_log[0].state_deltas[0].shield_delta, 0.0)
-        self.assertEqual(run.combat_log[0].state_deltas[0].burn_delta, -1.0)
+        self.assertEqual(run.combat_log[0].event_type, "combat_start")
+        self.assertEqual(run.combat_log[1].event_type, "burn_tick")
+        self.assertEqual(run.combat_log[1].state_deltas[0].health_delta, -5.0)
+        self.assertEqual(run.combat_log[1].state_deltas[0].shield_delta, 0.0)
+        self.assertEqual(run.combat_log[1].state_deltas[0].burn_delta, -1.0)
 
     def test_poison_ticks_ignore_shield_and_do_not_decay(self) -> None:
         payload = sample_request_payload()
@@ -301,10 +317,11 @@ class SimulationContractTests(unittest.TestCase):
         self.assertEqual(run.players[0].health, 96.0)
         self.assertEqual(run.players[0].shield, 10.0)
         self.assertEqual(run.players[0].poison, 4.0)
-        self.assertEqual(run.combat_log[0].event_type, "poison_tick")
-        self.assertEqual(run.combat_log[0].state_deltas[0].health_delta, -4.0)
-        self.assertEqual(run.combat_log[0].state_deltas[0].shield_delta, 0.0)
-        self.assertEqual(run.combat_log[0].state_deltas[0].poison_delta, 0.0)
+        self.assertEqual(run.combat_log[0].event_type, "combat_start")
+        self.assertEqual(run.combat_log[1].event_type, "poison_tick")
+        self.assertEqual(run.combat_log[1].state_deltas[0].health_delta, -4.0)
+        self.assertEqual(run.combat_log[1].state_deltas[0].shield_delta, 0.0)
+        self.assertEqual(run.combat_log[1].state_deltas[0].poison_delta, 0.0)
 
     def test_healing_reduces_statuses_but_regen_does_not(self) -> None:
         payload = sample_request_payload()
@@ -317,13 +334,15 @@ class SimulationContractTests(unittest.TestCase):
                 "size": 1,
                 "cooldown_seconds": 99,
                 "initial_delay_seconds": 0,
-                "effects": [
-                    {
-                        "type": "heal",
-                        "target": "self",
-                        "magnitude": 20,
-                    }
-                ],
+                "abilities": timed_use_ability(
+                    [
+                        {
+                            "type": "heal",
+                            "target": "self",
+                            "magnitude": 20,
+                        }
+                    ]
+                ),
             }
         ]
         payload["players"][0]["stats"] = {
@@ -354,17 +373,18 @@ class SimulationContractTests(unittest.TestCase):
         self.assertEqual(run.players[0].poison, 9.0)
         self.assertEqual(run.metrics.player_a.regen_ticks, 1)
         self.assertEqual(run.metrics.player_a.item_uses, 1)
-        self.assertEqual(run.combat_log[0].event_type, "item_use")
-        self.assertEqual(run.combat_log[0].state_deltas[0].health_delta, 20.0)
-        self.assertEqual(run.combat_log[0].state_deltas[0].burn_delta, -1.0)
-        self.assertEqual(run.combat_log[0].state_deltas[0].poison_delta, -1.0)
-        self.assertEqual(run.combat_log[1].event_type, "burn_tick")
+        self.assertEqual(run.combat_log[0].event_type, "combat_start")
+        self.assertEqual(run.combat_log[1].event_type, "item_use")
+        self.assertEqual(run.combat_log[1].state_deltas[0].health_delta, 20.0)
+        self.assertEqual(run.combat_log[1].state_deltas[0].burn_delta, -1.0)
+        self.assertEqual(run.combat_log[1].state_deltas[0].poison_delta, -1.0)
         self.assertEqual(run.combat_log[2].event_type, "burn_tick")
-        self.assertEqual(run.combat_log[3].event_type, "poison_tick")
-        self.assertEqual(run.combat_log[4].event_type, "regen_tick")
-        self.assertEqual(run.combat_log[4].state_deltas[0].health_delta, 10.0)
-        self.assertEqual(run.combat_log[4].state_deltas[0].burn_delta, 0.0)
-        self.assertEqual(run.combat_log[4].state_deltas[0].poison_delta, 0.0)
+        self.assertEqual(run.combat_log[3].event_type, "burn_tick")
+        self.assertEqual(run.combat_log[4].event_type, "poison_tick")
+        self.assertEqual(run.combat_log[5].event_type, "regen_tick")
+        self.assertEqual(run.combat_log[5].state_deltas[0].health_delta, 10.0)
+        self.assertEqual(run.combat_log[5].state_deltas[0].burn_delta, 0.0)
+        self.assertEqual(run.combat_log[5].state_deltas[0].poison_delta, 0.0)
 
     def test_combat_log_includes_ordered_entries_with_state_deltas(self) -> None:
         payload = sample_request_payload()
@@ -384,10 +404,14 @@ class SimulationContractTests(unittest.TestCase):
 
         for index, entry in enumerate(run.combat_log):
             self.assertEqual(entry.event_index, index)
-            self.assertIn(entry.event_type, ["item_use", "burn_tick", "poison_tick", "regen_tick"])
-            self.assertIn(entry.source_player_id, ["player_a", "player_b"])
+            self.assertIn(entry.event_type, ["combat_start", "item_use", "burn_tick", "poison_tick", "regen_tick"])
+            if entry.event_type == "combat_start":
+                self.assertEqual(entry.source_player_id, "system")
+            else:
+                self.assertIn(entry.source_player_id, ["player_a", "player_b"])
 
-        first_entry = run.combat_log[0]
+        self.assertEqual(run.combat_log[0].event_type, "combat_start")
+        first_entry = run.combat_log[1]
         self.assertEqual(first_entry.time_seconds, 1.0)
         self.assertEqual(first_entry.event_type, "item_use")
         self.assertEqual(first_entry.source_player_id, "player_a")
@@ -425,18 +449,20 @@ class SimulationContractTests(unittest.TestCase):
                 "size": 1,
                 "cooldown_seconds": 99,
                 "initial_delay_seconds": 0,
-                "effects": [
-                    {
-                        "type": "damage",
-                        "target": "opponent",
-                        "magnitude": 3,
-                    },
-                    {
-                        "type": "apply_burn",
-                        "target": "opponent",
-                        "magnitude": 2,
-                    },
-                ],
+                "abilities": timed_use_ability(
+                    [
+                        {
+                            "type": "damage",
+                            "target": "opponent",
+                            "magnitude": 3,
+                        },
+                        {
+                            "type": "apply_burn",
+                            "target": "opponent",
+                            "magnitude": 2,
+                        },
+                    ]
+                ),
             }
         ]
         payload["players"][0]["stats"] = {"max_health": 30}
@@ -456,9 +482,9 @@ class SimulationContractTests(unittest.TestCase):
         result = run_simulation(request)
         run = result.runs[0]
 
-        self.assertEqual(run.combat_log_total_events, 3)
+        self.assertEqual(run.combat_log_total_events, 4)
         self.assertFalse(run.combat_log_truncated)
-        self.assertEqual(len(run.combat_log), 3)
+        self.assertEqual(len(run.combat_log), 4)
 
         snapshot = [
             {
@@ -479,6 +505,15 @@ class SimulationContractTests(unittest.TestCase):
                 {
                     "event_index": 0,
                     "time_seconds": 0.0,
+                    "event_type": "combat_start",
+                    "source_player_id": "system",
+                    "source_item_instance_id": None,
+                    "target_id": None,
+                    "state_deltas": [],
+                },
+                {
+                    "event_index": 1,
+                    "time_seconds": 0.0,
                     "event_type": "item_use",
                     "source_player_id": "player_a",
                     "source_item_instance_id": "a-burner",
@@ -498,7 +533,7 @@ class SimulationContractTests(unittest.TestCase):
                     ],
                 },
                 {
-                    "event_index": 1,
+                    "event_index": 2,
                     "time_seconds": 0.5,
                     "event_type": "burn_tick",
                     "source_player_id": "player_a",
@@ -519,7 +554,7 @@ class SimulationContractTests(unittest.TestCase):
                     ],
                 },
                 {
-                    "event_index": 2,
+                    "event_index": 3,
                     "time_seconds": 1.0,
                     "event_type": "burn_tick",
                     "source_player_id": "player_a",
@@ -544,7 +579,7 @@ class SimulationContractTests(unittest.TestCase):
 
     def test_api_route_contracts_and_openapi(self) -> None:
         scope_response = simulation_schema()
-        self.assertEqual(scope_response.scope.trigger_modes, ["timed_use_only"])
+        self.assertIn("timed_use", scope_response.scope.trigger_modes)
 
         request = SimulationRequest.model_validate(sample_request_payload())
         result = simulate(request)
@@ -593,7 +628,8 @@ class SimulationContractTests(unittest.TestCase):
         result = run_simulation(request)
         run = result.runs[0]
 
-        first_entry = run.combat_log[0]
+        self.assertEqual(run.combat_log[0].event_type, "combat_start")
+        first_entry = run.combat_log[1]
         self.assertEqual(first_entry.event_type, "item_use")
         self.assertEqual(first_entry.source_item_instance_id, "a-source")
         self.assertEqual(first_entry.target_id, "player_b")
@@ -639,7 +675,8 @@ class SimulationContractTests(unittest.TestCase):
         result = run_simulation(request)
         run = result.runs[0]
 
-        first_entry = run.combat_log[0]
+        self.assertEqual(run.combat_log[0].event_type, "combat_start")
+        first_entry = run.combat_log[1]
         self.assertEqual(first_entry.event_type, "item_use")
         self.assertEqual(first_entry.target_id, "player_b")
 
@@ -709,13 +746,15 @@ class SimulationContractTests(unittest.TestCase):
                 "size": 1,
                 "cooldown_seconds": 99,
                 "initial_delay_seconds": 0,
-                "effects": [
-                    {
-                        "type": "damage",
-                        "target": "opponent",
-                        "magnitude": 50,
-                    }
-                ],
+                "abilities": timed_use_ability(
+                    [
+                        {
+                            "type": "damage",
+                            "target": "opponent",
+                            "magnitude": 50,
+                        }
+                    ]
+                ),
             }
         ]
         payload["players"][0]["stats"] = {"max_health": 30}
@@ -752,13 +791,15 @@ class SimulationContractTests(unittest.TestCase):
                 "name": "Slow DoT",
                 "size": 1,
                 "cooldown_seconds": 99,
-                "effects": [
-                    {
-                        "type": "apply_burn",
-                        "target": "opponent",
-                        "magnitude": 0.1,
-                    }
-                ],
+                "abilities": timed_use_ability(
+                    [
+                        {
+                            "type": "apply_burn",
+                            "target": "opponent",
+                            "magnitude": 0.1,
+                        }
+                    ]
+                ),
             }
         ]
         payload["players"][0]["stats"] = {"max_health": 100}
@@ -792,13 +833,15 @@ class SimulationContractTests(unittest.TestCase):
                 "name": "Rapid",
                 "size": 1,
                 "cooldown_seconds": 0.1,
-                "effects": [
-                    {
-                        "type": "apply_burn",
-                        "target": "opponent",
-                        "magnitude": 1,
-                    }
-                ],
+                "abilities": timed_use_ability(
+                    [
+                        {
+                            "type": "apply_burn",
+                            "target": "opponent",
+                            "magnitude": 1,
+                        }
+                    ]
+                ),
             }
         ]
         payload["players"][0]["stats"] = {"max_health": 100}
@@ -834,13 +877,15 @@ class SimulationContractTests(unittest.TestCase):
                 "size": 1,
                 "cooldown_seconds": 5.0,
                 "initial_delay_seconds": 0.5,
-                "effects": [
-                    {
-                        "type": "damage",
-                        "target": "opponent",
-                        "magnitude": 15,
-                    }
-                ],
+                "abilities": timed_use_ability(
+                    [
+                        {
+                            "type": "damage",
+                            "target": "opponent",
+                            "magnitude": 15,
+                        }
+                    ]
+                ),
             }
         ]
         payload["players"][0]["stats"] = {"max_health": 40}
@@ -883,13 +928,15 @@ class SimulationContractTests(unittest.TestCase):
                 "size": 1,
                 "cooldown_seconds": 0.5,
                 "initial_delay_seconds": 0,
-                "effects": [
-                    {
-                        "type": "heal",
-                        "target": "self",
-                        "magnitude": 5,
-                    }
-                ],
+                "abilities": timed_use_ability(
+                    [
+                        {
+                            "type": "heal",
+                            "target": "self",
+                            "magnitude": 5,
+                        }
+                    ]
+                ),
             }
         ]
         payload["players"][0]["stats"] = {"max_health": 50}
@@ -932,7 +979,9 @@ class SimulationContractTests(unittest.TestCase):
                     "size": 1,
                     "cooldown_seconds": 1.0,
                     "initial_delay_seconds": 0.1,
-                    "effects": [{"type": "damage", "target": "opponent", "magnitude": 5}],
+                    "abilities": timed_use_ability(
+                        [{"type": "damage", "target": "opponent", "magnitude": 5}]
+                    ),
                 },
                 {
                     "id": "burn_trap",
@@ -940,9 +989,9 @@ class SimulationContractTests(unittest.TestCase):
                     "size": 1,
                     "cooldown_seconds": 2.0,
                     "initial_delay_seconds": 0.5,
-                    "effects": [
-                        {"type": "apply_burn", "target": "opponent", "magnitude": 3}
-                    ],
+                    "abilities": timed_use_ability(
+                        [{"type": "apply_burn", "target": "opponent", "magnitude": 3}]
+                    ),
                 },
                 {
                     "id": "shield_up",
@@ -950,7 +999,9 @@ class SimulationContractTests(unittest.TestCase):
                     "size": 1,
                     "cooldown_seconds": 3.0,
                     "initial_delay_seconds": 1.0,
-                    "effects": [{"type": "shield", "target": "self", "magnitude": 10}],
+                    "abilities": timed_use_ability(
+                        [{"type": "shield", "target": "self", "magnitude": 10}]
+                    ),
                 },
             ],
             "players": [

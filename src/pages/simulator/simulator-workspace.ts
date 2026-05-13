@@ -3,13 +3,14 @@ import type { SimulationRequest, SimulationResponse } from "@/api/endpoints";
 export type BuildSide = "player_a" | "player_b";
 
 export type BuildItemDefinition = SimulationRequest["item_definitions"][number];
+export type BuildItemAbility = BuildItemDefinition["abilities"][number];
 type BuildBoardConfig = NonNullable<SimulationRequest["players"][number]["board"]>;
 export type BuildPlacement = NonNullable<BuildBoardConfig["placements"]>[number];
 export type BuildPlayerStats = SimulationRequest["players"][number]["stats"];
 export type BuildInitialStatus = NonNullable<
   SimulationRequest["players"][number]["initial_statuses"]
 >[number];
-export type BuildItemEffect = BuildItemDefinition["effects"][number];
+export type BuildItemEffect = BuildItemAbility["effects"][number];
 
 export type ValidationIssue = {
   side: BuildSide;
@@ -76,7 +77,7 @@ export type MatchupRequest = {
   settings: SimulatorSettings;
 };
 
-const STORAGE_KEY = "card-game-sim.simulator.workspace.v1";
+const STORAGE_KEY = "card-game-sim.simulator.workspace.v2";
 
 function uid(prefix: string): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -90,17 +91,72 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function getTimedUseAbilityIndex(abilities: BuildItemAbility[]): number {
+  return abilities.findIndex((ability) => ability.trigger.type === "timed_use");
+}
+
+export function getTimedUseEffects(item: BuildItemDefinition): BuildItemEffect[] {
+  const index = getTimedUseAbilityIndex(item.abilities);
+  if (index === -1) return [];
+  return item.abilities[index].effects;
+}
+
+function updateTimedUseEffects(
+  item: BuildItemDefinition,
+  updater: (effects: BuildItemEffect[]) => BuildItemEffect[],
+): BuildItemDefinition {
+  const index = getTimedUseAbilityIndex(item.abilities);
+  if (index === -1) {
+    return {
+      ...item,
+      abilities: [
+        ...item.abilities,
+        {
+          trigger: { type: "timed_use" },
+          effects: updater([defaultEffect("damage")]),
+        },
+      ],
+    };
+  }
+
+  return {
+    ...item,
+    abilities: item.abilities.map((ability, abilityIndex) =>
+      abilityIndex === index
+        ? {
+            ...ability,
+            effects: updater(ability.effects),
+          }
+        : ability,
+    ),
+  };
+}
+
+function normalizeEffect(
+  effect: Omit<BuildItemEffect, "targeting_mode"> &
+    Partial<Pick<BuildItemEffect, "targeting_mode">>,
+): BuildItemEffect {
+  return {
+    targeting_mode: "single",
+    ...effect,
+  };
+}
+
 function defaultEffect(type: BuildItemEffect["type"] = "damage"): BuildItemEffect {
-  if (type === "damage") return { type, target: "opponent", magnitude: 5 };
-  if (type === "heal") return { type, target: "self", magnitude: 3 };
-  if (type === "shield") return { type, target: "self", magnitude: 4 };
-  if (type === "apply_burn") return { type, target: "opponent", magnitude: 2 };
-  if (type === "apply_poison") return { type, target: "opponent", magnitude: 2 };
-  if (type === "apply_item_slow") return { type, target: "opponent_item", magnitude: 2 };
-  if (type === "apply_item_haste") return { type, target: "self_item", magnitude: 2 };
-  if (type === "apply_item_freeze") return { type, target: "opponent_item", magnitude: 1 };
-  if (type === "apply_item_charge") return { type, target: "self_item", magnitude: 1 };
-  return { type, target: "self_item", magnitude: 1 };
+  if (type === "damage") return normalizeEffect({ type, target: "opponent", magnitude: 5 });
+  if (type === "heal") return normalizeEffect({ type, target: "self", magnitude: 3 });
+  if (type === "shield") return normalizeEffect({ type, target: "self", magnitude: 4 });
+  if (type === "apply_burn") return normalizeEffect({ type, target: "opponent", magnitude: 2 });
+  if (type === "apply_poison") return normalizeEffect({ type, target: "opponent", magnitude: 2 });
+  if (type === "apply_item_slow")
+    return normalizeEffect({ type, target: "opponent_item", magnitude: 2 });
+  if (type === "apply_item_haste")
+    return normalizeEffect({ type, target: "self_item", magnitude: 2 });
+  if (type === "apply_item_freeze")
+    return normalizeEffect({ type, target: "opponent_item", magnitude: 1 });
+  if (type === "apply_item_charge")
+    return normalizeEffect({ type, target: "self_item", magnitude: 1 });
+  return normalizeEffect({ type, target: "self_item", magnitude: 1 });
 }
 
 function makeItemDefinition(
@@ -114,7 +170,12 @@ function makeItemDefinition(
     name,
     size: 1,
     cooldown_seconds: 2,
-    effects: [effect],
+    abilities: [
+      {
+        trigger: { type: "timed_use" },
+        effects: [normalizeEffect(effect)],
+      },
+    ],
     ...overrides,
   };
 }
@@ -149,15 +210,19 @@ function createStarterBuilds(): Record<BuildSide, BuildDraft[]> {
     "player_a",
     "A Baseline",
     [
-      makeItemDefinition("katana", "Katana", { type: "damage", target: "opponent", magnitude: 5 }),
+      makeItemDefinition(
+        "katana",
+        "Katana",
+        normalizeEffect({ type: "damage", target: "opponent", magnitude: 5 }),
+      ),
       makeItemDefinition(
         "lighter",
         "Lighter",
-        {
+        normalizeEffect({
           type: "apply_burn",
           target: "opponent",
           magnitude: 3,
-        },
+        }),
         { cooldown_seconds: 3 },
       ),
     ],
@@ -174,11 +239,15 @@ function createStarterBuilds(): Record<BuildSide, BuildDraft[]> {
     "player_a",
     "A Burn Loop",
     [
-      makeItemDefinition("strike", "Strike", { type: "damage", target: "opponent", magnitude: 3 }),
+      makeItemDefinition(
+        "strike",
+        "Strike",
+        normalizeEffect({ type: "damage", target: "opponent", magnitude: 3 }),
+      ),
       makeItemDefinition(
         "ember",
         "Ember Fan",
-        { type: "apply_burn", target: "opponent", magnitude: 4 },
+        normalizeEffect({ type: "apply_burn", target: "opponent", magnitude: 4 }),
         { cooldown_seconds: 4 },
       ),
     ],
@@ -198,10 +267,14 @@ function createStarterBuilds(): Record<BuildSide, BuildDraft[]> {
       makeItemDefinition(
         "guard",
         "Guard",
-        { type: "shield", target: "self", magnitude: 4 },
+        normalizeEffect({ type: "shield", target: "self", magnitude: 4 }),
         { cooldown_seconds: 2.5 },
       ),
-      makeItemDefinition("spear", "Spear", { type: "damage", target: "opponent", magnitude: 4 }),
+      makeItemDefinition(
+        "spear",
+        "Spear",
+        normalizeEffect({ type: "damage", target: "opponent", magnitude: 4 }),
+      ),
     ],
     [
       { item_instance_id: "b-guard", item_definition_id: "guard", start_slot: 1 },
@@ -219,21 +292,21 @@ function createStarterBuilds(): Record<BuildSide, BuildDraft[]> {
       makeItemDefinition(
         "net",
         "Freeze Net",
-        {
+        normalizeEffect({
           type: "apply_item_freeze",
           target: "opponent_item",
           magnitude: 1,
-        },
+        }),
         { cooldown_seconds: 5 },
       ),
       makeItemDefinition(
         "dart",
         "Poison Dart",
-        {
+        normalizeEffect({
           type: "apply_poison",
           target: "opponent",
           magnitude: 2,
-        },
+        }),
         { cooldown_seconds: 2.5 },
       ),
     ],
@@ -653,7 +726,9 @@ export function addItemEffect(
   return updateBuild(workspace, side, buildId, (build) => ({
     ...build,
     item_definitions: build.item_definitions.map((item) =>
-      item.id === itemId ? { ...item, effects: [...item.effects, defaultEffect("damage")] } : item,
+      item.id === itemId
+        ? updateTimedUseEffects(item, (effects) => [...effects, defaultEffect("damage")])
+        : item,
     ),
     updated_at: nowIso(),
   }));
@@ -670,11 +745,10 @@ export function removeItemEffect(
     ...build,
     item_definitions: build.item_definitions.map((item) => {
       if (item.id !== itemId) return item;
-      const nextEffects = item.effects.filter((_, index) => index !== effectIndex);
-      return {
-        ...item,
-        effects: nextEffects.length > 0 ? nextEffects : [defaultEffect("damage")],
-      };
+      return updateTimedUseEffects(item, (effects) => {
+        const nextEffects = effects.filter((_, index) => index !== effectIndex);
+        return nextEffects.length > 0 ? nextEffects : [defaultEffect("damage")];
+      });
     }),
     updated_at: nowIso(),
   }));
@@ -692,12 +766,9 @@ export function updateItemEffect(
     ...build,
     item_definitions: build.item_definitions.map((item) => {
       if (item.id !== itemId) return item;
-      return {
-        ...item,
-        effects: item.effects.map((effect, index) =>
-          index === effectIndex ? { ...effect, ...patch } : effect,
-        ),
-      };
+      return updateTimedUseEffects(item, (effects) =>
+        effects.map((effect, index) => (index === effectIndex ? { ...effect, ...patch } : effect)),
+      );
     }),
     updated_at: nowIso(),
   }));
@@ -915,11 +986,11 @@ export function validateBuild(build: BuildDraft): ValidationIssue[] {
         message: "Cooldown must be greater than 0.",
       });
     }
-    if (item.effects.length === 0) {
+    if (getTimedUseEffects(item).length === 0) {
       issues.push({
         side: build.side,
         buildId: build.id,
-        path: `item_definitions[${itemIndex}].effects`,
+        path: `item_definitions[${itemIndex}].abilities[0].effects`,
         message: "At least one effect is required.",
       });
     }

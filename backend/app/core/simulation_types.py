@@ -11,6 +11,8 @@ POISON_TICK_INTERVAL_SECONDS = 1.0
 REGEN_TICK_INTERVAL_SECONDS = 1.0
 
 EVENT_ITEM_USE = "item_use"
+EVENT_COMBAT_START = "combat_start"
+EVENT_ITEM_ABILITY = "item_ability"
 EVENT_BURN_TICK = "burn_tick"
 EVENT_POISON_TICK = "poison_tick"
 EVENT_REGEN_TICK = "regen_tick"
@@ -27,7 +29,9 @@ EVENT_ITEM_FLIGHT_START = "item_flight_start"
 EVENT_ITEM_FLIGHT_END = "item_flight_end"
 
 EVENT_TYPE_PRIORITY: dict[str, int] = {
+    EVENT_COMBAT_START: -10,
     EVENT_ITEM_USE: 0,
+    EVENT_ITEM_ABILITY: 3,
     EVENT_ITEM_CHARGE: 1,
     EVENT_ITEM_SLOW_START: 2,
     EVENT_ITEM_SLOW_END: 2,
@@ -43,6 +47,7 @@ EVENT_TYPE_PRIORITY: dict[str, int] = {
 }
 
 PLAYER_EVENT_ORDER: dict[str, int] = {
+    "system": -1,
     "player_a": 0,
     "player_b": 1,
 }
@@ -115,6 +120,9 @@ class Event:
     source_item_instance_id: str | None = field(default=None, compare=False)
     effect_magnitude: float | None = field(default=None, compare=False)
     modifier_instance_id: str | None = field(default=None, compare=False)
+    ability_index: int | None = field(default=None, compare=False)
+    trigger_item_instance_id: str | None = field(default=None, compare=False)
+    trigger_source_item_instance_id: str | None = field(default=None, compare=False)
     stale: bool = field(default=False, compare=False)
 
 
@@ -128,6 +136,9 @@ def make_event(
     source_item_instance_id: str | None = None,
     effect_magnitude: float | None = None,
     modifier_instance_id: str | None = None,
+    ability_index: int | None = None,
+    trigger_item_instance_id: str | None = None,
+    trigger_source_item_instance_id: str | None = None,
 ) -> Event:
     return Event(
         time=time,
@@ -141,4 +152,7 @@ def make_event(
         source_item_instance_id=source_item_instance_id,
         effect_magnitude=effect_magnitude,
         modifier_instance_id=modifier_instance_id,
+        ability_index=ability_index,
+        trigger_item_instance_id=trigger_item_instance_id,
+        trigger_source_item_instance_id=trigger_source_item_instance_id,
     )

@@ -17,6 +17,7 @@ import {
   getPlacementIndexAtSlot,
   getPlacementIndexByInstanceId,
   getBuild,
+  getTimedUseEffects,
   loadWorkspace,
   materializeMatchupRequest,
   movePlacementToSlot,
@@ -1060,7 +1061,7 @@ function BuildEditor({
                   </button>
                 </div>
                 <div className="mt-2 space-y-2">
-                  {item.effects.map((effect, effectIndex) => (
+                  {getTimedUseEffects(item).map((effect, effectIndex) => (
                     <div
                       key={`${item.id}-effect-${effectIndex}`}
                       className="grid gap-2 md:grid-cols-[160px_1fr_120px_auto]"

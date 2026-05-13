@@ -10,9 +10,11 @@ from app.core.simulation_event_handlers import (
     clear_modifier_timer_trace,
     get_modifier_timer_trace,
     handle_burn_tick_event,
+    handle_combat_start_event,
     handle_item_charge_event,
     handle_item_flight_end_event,
     handle_item_flight_start_event,
+    handle_item_ability_event,
     handle_item_modifier_end_event,
     handle_item_modifier_start_event,
     handle_item_use_event,
@@ -34,6 +36,8 @@ from app.core.simulation_types import (
     EVENT_ITEM_SLOW_END,
     EVENT_ITEM_SLOW_START,
     EVENT_ITEM_USE,
+    EVENT_COMBAT_START,
+    EVENT_ITEM_ABILITY,
     EVENT_POISON_TICK,
     EVENT_REGEN_TICK,
     POISON_TICK_INTERVAL_SECONDS,
@@ -141,6 +145,18 @@ def simulate_single_run(request: SimulationRequest, run_index: int) -> Simulatio
     )
 
     item_metrics_by_instance: dict[str, ItemRunMetrics] = {}
+    # Schedule combat-start triggers at time 0.
+    heapq.heappush(
+        queue,
+        make_event(
+            time=0.0,
+            sequence=sequence,
+            event_type=EVENT_COMBAT_START,
+            source_id="system",
+            target_id=None,
+        ),
+    )
+
     for item in runtime_items:
         item_metric = ItemRunMetrics(
             item_instance_id=item.instance_id,
@@ -152,6 +168,12 @@ def simulate_single_run(request: SimulationRequest, run_index: int) -> Simulatio
         owner_metrics.item_metrics.append(item_metric)
 
     for item in runtime_items:
+        has_timed_use = any(
+            ability.trigger.type.value == "timed_use" for ability in item.definition.abilities
+        )
+        if not has_timed_use:
+            continue
+
         initial_delay = item.definition.initial_delay_seconds
         first_use_time = initial_delay if initial_delay is not None else item.definition.cooldown_seconds
         heapq.heappush(
@@ -245,6 +267,28 @@ def simulate_single_run(request: SimulationRequest, run_index: int) -> Simulatio
                     sequence=sequence,
                     rng=rng,
                 )
+            elif same_time_event.event_type == EVENT_COMBAT_START:
+                handle_combat_start_event(
+                    event=same_time_event,
+                    runtime_item_lookup=runtime_item_lookup,
+                    board_by_player=board_by_player,
+                    current_time=current_time,
+                    queue=queue,
+                    sequence=sequence,
+                )
+            elif same_time_event.event_type == EVENT_ITEM_ABILITY:
+                log_target_id = handle_item_ability_event(
+                    event=same_time_event,
+                    players=players,
+                    runtime_item_lookup=runtime_item_lookup,
+                    board_by_player=board_by_player,
+                    metrics=metrics,
+                    item_metrics_by_instance=item_metrics_by_instance,
+                    current_time=current_time,
+                    queue=queue,
+                    sequence=sequence,
+                    rng=rng,
+                )
             elif same_time_event.event_type == EVENT_BURN_TICK:
                 handle_burn_tick_event(
                     event=same_time_event,
@@ -277,6 +321,7 @@ def simulate_single_run(request: SimulationRequest, run_index: int) -> Simulatio
                 handle_item_modifier_start_event(
                     event=same_time_event,
                     runtime_item_lookup=runtime_item_lookup,
+                    board_by_player=board_by_player,
                     modifier_type="slow",
                     current_time=current_time,
                     queue=queue,
@@ -295,6 +340,7 @@ def simulate_single_run(request: SimulationRequest, run_index: int) -> Simulatio
                 handle_item_modifier_start_event(
                     event=same_time_event,
                     runtime_item_lookup=runtime_item_lookup,
+                    board_by_player=board_by_player,
                     modifier_type="haste",
                     current_time=current_time,
                     queue=queue,
@@ -313,6 +359,7 @@ def simulate_single_run(request: SimulationRequest, run_index: int) -> Simulatio
                 handle_item_modifier_start_event(
                     event=same_time_event,
                     runtime_item_lookup=runtime_item_lookup,
+                    board_by_player=board_by_player,
                     modifier_type="freeze",
                     current_time=current_time,
                     queue=queue,
@@ -360,7 +407,7 @@ def simulate_single_run(request: SimulationRequest, run_index: int) -> Simulatio
                 source_item_instance_id=same_time_event.source_item_instance_id,
                 target_id=(
                     log_target_id
-                    if same_time_event.event_type == EVENT_ITEM_USE
+                    if same_time_event.event_type in {EVENT_ITEM_USE, EVENT_ITEM_ABILITY}
                     else same_time_event.target_id
                 ),
                 state_deltas=state_deltas,

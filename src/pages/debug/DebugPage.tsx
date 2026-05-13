@@ -41,7 +41,12 @@ const BASELINE_DUEL: SimulationRequest = {
       name: "Katana",
       size: 1,
       cooldown_seconds: 1,
-      effects: [{ type: "damage", target: "opponent", magnitude: 5 }],
+      abilities: [
+        {
+          trigger: { type: "timed_use" },
+          effects: [{ type: "damage", target: "opponent", magnitude: 5, targeting_mode: "single" }],
+        },
+      ],
     },
   ],
   players: [
@@ -90,21 +95,52 @@ const ITEM_STATUS_EFFECT_PRESETS: SimulationPreset[] = [
           name: "Striker",
           size: 1,
           cooldown_seconds: 10,
-          effects: [{ type: "damage", target: "opponent", magnitude: 10 }],
+          abilities: [
+            {
+              trigger: { type: "timed_use" },
+              effects: [
+                { type: "damage", target: "opponent", magnitude: 10, targeting_mode: "single" },
+              ],
+            },
+          ],
         },
         {
           id: "tar-net",
           name: "Tar Net",
           size: 1,
           cooldown_seconds: 4,
-          effects: [{ type: "apply_item_slow", target: "enemy_random", magnitude: 5 }],
+          abilities: [
+            {
+              trigger: { type: "timed_use" },
+              effects: [
+                {
+                  type: "apply_item_slow",
+                  target: "enemy_random",
+                  magnitude: 5,
+                  targeting_mode: "single",
+                },
+              ],
+            },
+          ],
         },
         {
           id: "engine-tune",
           name: "Engine Tune",
           size: 1,
           cooldown_seconds: 4,
-          effects: [{ type: "apply_item_haste", target: "self_item", magnitude: 2 }],
+          abilities: [
+            {
+              trigger: { type: "timed_use" },
+              effects: [
+                {
+                  type: "apply_item_haste",
+                  target: "self_item",
+                  magnitude: 2,
+                  targeting_mode: "single",
+                },
+              ],
+            },
+          ],
         },
       ],
       players: [
@@ -151,28 +187,66 @@ const ITEM_STATUS_EFFECT_PRESETS: SimulationPreset[] = [
           name: "Ice Beam",
           size: 1,
           cooldown_seconds: 5,
-          effects: [{ type: "apply_item_freeze", target: "opponent_item", magnitude: 1.5 }],
+          abilities: [
+            {
+              trigger: { type: "timed_use" },
+              effects: [
+                {
+                  type: "apply_item_freeze",
+                  target: "opponent_item",
+                  magnitude: 1.5,
+                  targeting_mode: "single",
+                },
+              ],
+            },
+          ],
         },
         {
           id: "pulse-blade",
           name: "Pulse Blade",
           size: 1,
           cooldown_seconds: 1.2,
-          effects: [{ type: "damage", target: "opponent", magnitude: 3.5 }],
+          abilities: [
+            {
+              trigger: { type: "timed_use" },
+              effects: [
+                { type: "damage", target: "opponent", magnitude: 3.5, targeting_mode: "single" },
+              ],
+            },
+          ],
         },
         {
           id: "charge-link",
           name: "Charge Link",
           size: 1,
           cooldown_seconds: 4.2,
-          effects: [{ type: "apply_item_charge", target: "self_item", magnitude: 1.5 }],
+          abilities: [
+            {
+              trigger: { type: "timed_use" },
+              effects: [
+                {
+                  type: "apply_item_charge",
+                  target: "self_item",
+                  magnitude: 1.5,
+                  targeting_mode: "single",
+                },
+              ],
+            },
+          ],
         },
         {
           id: "heavy-cannon",
           name: "Heavy Cannon",
           size: 2,
           cooldown_seconds: 4.6,
-          effects: [{ type: "damage", target: "opponent", magnitude: 8 }],
+          abilities: [
+            {
+              trigger: { type: "timed_use" },
+              effects: [
+                { type: "damage", target: "opponent", magnitude: 8, targeting_mode: "single" },
+              ],
+            },
+          ],
         },
       ],
       players: [
@@ -219,9 +293,19 @@ const ITEM_STATUS_EFFECT_PRESETS: SimulationPreset[] = [
           name: "Wing Lash",
           size: 1,
           cooldown_seconds: 1.3,
-          effects: [
-            { type: "damage", target: "opponent", magnitude: 3 },
-            { type: "apply_item_flight", target: "self_item", magnitude: 1.5 },
+          abilities: [
+            {
+              trigger: { type: "timed_use" },
+              effects: [
+                { type: "damage", target: "opponent", magnitude: 3, targeting_mode: "single" },
+                {
+                  type: "apply_item_flight",
+                  target: "self_item",
+                  magnitude: 1.5,
+                  targeting_mode: "single",
+                },
+              ],
+            },
           ],
         },
         {
@@ -229,21 +313,57 @@ const ITEM_STATUS_EFFECT_PRESETS: SimulationPreset[] = [
           name: "Ember Fan",
           size: 1,
           cooldown_seconds: 3.5,
-          effects: [{ type: "apply_burn", target: "opponent", magnitude: 3 }],
+          abilities: [
+            {
+              trigger: { type: "timed_use" },
+              effects: [
+                {
+                  type: "apply_burn",
+                  target: "opponent",
+                  magnitude: 3,
+                  targeting_mode: "single",
+                },
+              ],
+            },
+          ],
         },
         {
           id: "venom-dart",
           name: "Venom Dart",
           size: 1,
           cooldown_seconds: 2,
-          effects: [{ type: "apply_poison", target: "opponent", magnitude: 2.5 }],
+          abilities: [
+            {
+              trigger: { type: "timed_use" },
+              effects: [
+                {
+                  type: "apply_poison",
+                  target: "opponent",
+                  magnitude: 2.5,
+                  targeting_mode: "single",
+                },
+              ],
+            },
+          ],
         },
         {
           id: "shock-orb",
           name: "Shock Orb",
           size: 1,
           cooldown_seconds: 2.8,
-          effects: [{ type: "damage", target: "enemy_random", magnitude: 4.5 }],
+          abilities: [
+            {
+              trigger: { type: "timed_use" },
+              effects: [
+                {
+                  type: "damage",
+                  target: "enemy_random",
+                  magnitude: 4.5,
+                  targeting_mode: "single",
+                },
+              ],
+            },
+          ],
         },
       ],
       players: [

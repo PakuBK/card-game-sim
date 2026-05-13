@@ -21,6 +21,10 @@ def _base_player(player_id: str, placements: list[dict]) -> dict:
     }
 
 
+def timed_use_ability(effects: list[dict]) -> list[dict]:
+    return [{"trigger": {"type": "timed_use"}, "effects": effects}]
+
+
 class ItemStatusEffectSmokeTests(unittest.TestCase):
     def test_apply_item_slow_emits_modifier_event(self) -> None:
         payload = {
@@ -36,22 +40,24 @@ class ItemStatusEffectSmokeTests(unittest.TestCase):
                     "size": 1,
                     "cooldown_seconds": 1.0,
                     "initial_delay_seconds": 0.0,
-                    "effects": [
-                        {
-                            "type": "apply_item_slow",
-                            "target": "opponent_item",
-                            "magnitude": 2.0,
-                        }
-                    ],
+                    "abilities": timed_use_ability(
+                        [
+                            {
+                                "type": "apply_item_slow",
+                                "target": "opponent_item",
+                                "magnitude": 2.0,
+                            }
+                        ]
+                    ),
                 },
                 {
                     "id": "target",
                     "name": "Target",
                     "size": 1,
                     "cooldown_seconds": 5.0,
-                    "effects": [
-                        {"type": "damage", "target": "opponent", "magnitude": 1.0}
-                    ],
+                    "abilities": timed_use_ability(
+                        [{"type": "damage", "target": "opponent", "magnitude": 1.0}]
+                    ),
                 },
             ],
             "players": [
@@ -99,22 +105,24 @@ class ItemStatusEffectSmokeTests(unittest.TestCase):
                     "size": 1,
                     "cooldown_seconds": 1.0,
                     "initial_delay_seconds": 0.0,
-                    "effects": [
-                        {
-                            "type": "apply_item_charge",
-                            "target": "opponent_item",
-                            "magnitude": 2.0,
-                        }
-                    ],
+                    "abilities": timed_use_ability(
+                        [
+                            {
+                                "type": "apply_item_charge",
+                                "target": "opponent_item",
+                                "magnitude": 2.0,
+                            }
+                        ]
+                    ),
                 },
                 {
                     "id": "target",
                     "name": "Target",
                     "size": 1,
                     "cooldown_seconds": 5.0,
-                    "effects": [
-                        {"type": "damage", "target": "opponent", "magnitude": 1.0}
-                    ],
+                    "abilities": timed_use_ability(
+                        [{"type": "damage", "target": "opponent", "magnitude": 1.0}]
+                    ),
                 },
             ],
             "players": [

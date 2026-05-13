@@ -38,7 +38,83 @@ def base_player(player_id: str, placements: list[dict]) -> dict:
     }
 
 
+def timed_use_ability(effects: list[dict]) -> list[dict]:
+    return [{"trigger": {"type": "timed_use"}, "effects": effects}]
+
+
 class ItemStatusEffectTests(unittest.TestCase):
+    def test_freeze_all_enemy_small_items_targets_multiple_items(self) -> None:
+        payload = build_request_payload(
+            item_definitions=[
+                {
+                    "id": "freezer",
+                    "name": "Freezer",
+                    "size": 1,
+                    "cooldown_seconds": 99.0,
+                    "initial_delay_seconds": 0.0,
+                    "abilities": timed_use_ability(
+                        [
+                            {
+                                "type": "apply_item_freeze",
+                                "target": "enemy_small_item",
+                                "magnitude": 3.0,
+                                "targeting_mode": "all",
+                            }
+                        ]
+                    ),
+                },
+                {
+                    "id": "small",
+                    "name": "Small",
+                    "size": 1,
+                    "cooldown_seconds": 8.0,
+                    "abilities": timed_use_ability(
+                        [{"type": "damage", "target": "opponent", "magnitude": 1.0}]
+                    ),
+                },
+                {
+                    "id": "medium",
+                    "name": "Medium",
+                    "size": 2,
+                    "cooldown_seconds": 8.0,
+                    "abilities": timed_use_ability(
+                        [{"type": "damage", "target": "opponent", "magnitude": 1.0}]
+                    ),
+                },
+            ],
+            players=[
+                base_player(
+                    "player_a",
+                    [
+                        {
+                            "item_instance_id": "a-freezer",
+                            "item_definition_id": "freezer",
+                            "start_slot": 0,
+                        }
+                    ],
+                ),
+                base_player(
+                    "player_b",
+                    [
+                        {"item_instance_id": "b-s1", "item_definition_id": "small", "start_slot": 0},
+                        {"item_instance_id": "b-m1", "item_definition_id": "medium", "start_slot": 2},
+                        {"item_instance_id": "b-s2", "item_definition_id": "small", "start_slot": 5},
+                    ],
+                ),
+            ],
+        )
+
+        request = SimulationRequest.model_validate(payload)
+        result = run_simulation(request)
+        run = result.runs[0]
+
+        freeze_events = [entry for entry in run.combat_log if entry.event_type == "item_freeze_start"]
+        self.assertGreaterEqual(len(freeze_events), 2)
+        targets = {e.target_id for e in freeze_events}
+        self.assertIn("b-s1", targets)
+        self.assertIn("b-s2", targets)
+        self.assertNotIn("b-m1", targets)
+
     def test_enemy_left_most_targets_left_edge_item(self) -> None:
         payload = build_request_payload(
             item_definitions=[
@@ -48,27 +124,33 @@ class ItemStatusEffectTests(unittest.TestCase):
                     "size": 1,
                     "cooldown_seconds": 99.0,
                     "initial_delay_seconds": 0.0,
-                    "effects": [
-                        {
-                            "type": "apply_item_slow",
-                            "target": "enemy_left_most",
-                            "magnitude": 2.0,
-                        }
-                    ],
+                    "abilities": timed_use_ability(
+                        [
+                            {
+                                "type": "apply_item_slow",
+                                "target": "enemy_left_most",
+                                "magnitude": 2.0,
+                            }
+                        ]
+                    ),
                 },
                 {
                     "id": "small",
                     "name": "Small",
                     "size": 1,
                     "cooldown_seconds": 8.0,
-                    "effects": [{"type": "damage", "target": "opponent", "magnitude": 1.0}],
+                    "abilities": timed_use_ability(
+                        [{"type": "damage", "target": "opponent", "magnitude": 1.0}]
+                    ),
                 },
                 {
                     "id": "large",
                     "name": "Large",
                     "size": 3,
                     "cooldown_seconds": 8.0,
-                    "effects": [{"type": "damage", "target": "opponent", "magnitude": 1.0}],
+                    "abilities": timed_use_ability(
+                        [{"type": "damage", "target": "opponent", "magnitude": 1.0}]
+                    ),
                 },
             ],
             players=[
@@ -103,27 +185,33 @@ class ItemStatusEffectTests(unittest.TestCase):
                     "size": 1,
                     "cooldown_seconds": 99.0,
                     "initial_delay_seconds": 0.0,
-                    "effects": [
-                        {
-                            "type": "apply_item_haste",
-                            "target": "enemy_small_item",
-                            "magnitude": 2.0,
-                        }
-                    ],
+                    "abilities": timed_use_ability(
+                        [
+                            {
+                                "type": "apply_item_haste",
+                                "target": "enemy_small_item",
+                                "magnitude": 2.0,
+                            }
+                        ]
+                    ),
                 },
                 {
                     "id": "small",
                     "name": "Small",
                     "size": 1,
                     "cooldown_seconds": 8.0,
-                    "effects": [{"type": "damage", "target": "opponent", "magnitude": 1.0}],
+                    "abilities": timed_use_ability(
+                        [{"type": "damage", "target": "opponent", "magnitude": 1.0}]
+                    ),
                 },
                 {
                     "id": "medium",
                     "name": "Medium",
                     "size": 2,
                     "cooldown_seconds": 8.0,
-                    "effects": [{"type": "damage", "target": "opponent", "magnitude": 1.0}],
+                    "abilities": timed_use_ability(
+                        [{"type": "damage", "target": "opponent", "magnitude": 1.0}]
+                    ),
                 },
             ],
             players=[
@@ -158,13 +246,15 @@ class ItemStatusEffectTests(unittest.TestCase):
                     "size": 1,
                     "cooldown_seconds": 99.0,
                     "initial_delay_seconds": 4.0,
-                    "effects": [
-                        {
-                            "type": "apply_item_slow",
-                            "target": "opponent_item",
-                            "magnitude": 2.0,
-                        }
-                    ],
+                    "abilities": timed_use_ability(
+                        [
+                            {
+                                "type": "apply_item_slow",
+                                "target": "opponent_item",
+                                "magnitude": 2.0,
+                            }
+                        ]
+                    ),
                 },
                 {
                     "id": "engine",
@@ -172,13 +262,15 @@ class ItemStatusEffectTests(unittest.TestCase):
                     "size": 1,
                     "cooldown_seconds": 4.0,
                     "initial_delay_seconds": 4.0,
-                    "effects": [
-                        {
-                            "type": "apply_item_haste",
-                            "target": "self_item",
-                            "magnitude": 2.0,
-                        }
-                    ],
+                    "abilities": timed_use_ability(
+                        [
+                            {
+                                "type": "apply_item_haste",
+                                "target": "self_item",
+                                "magnitude": 2.0,
+                            }
+                        ]
+                    ),
                 },
             ],
             players=[
@@ -227,13 +319,15 @@ class ItemStatusEffectTests(unittest.TestCase):
                     "size": 1,
                     "cooldown_seconds": 99.0,
                     "initial_delay_seconds": 4.0,
-                    "effects": [
-                        {
-                            "type": "apply_item_freeze",
-                            "target": "opponent_item",
-                            "magnitude": 2.0,
-                        }
-                    ],
+                    "abilities": timed_use_ability(
+                        [
+                            {
+                                "type": "apply_item_freeze",
+                                "target": "opponent_item",
+                                "magnitude": 2.0,
+                            }
+                        ]
+                    ),
                 },
                 {
                     "id": "engine",
@@ -241,13 +335,15 @@ class ItemStatusEffectTests(unittest.TestCase):
                     "size": 1,
                     "cooldown_seconds": 4.0,
                     "initial_delay_seconds": 4.0,
-                    "effects": [
-                        {
-                            "type": "apply_item_haste",
-                            "target": "self_item",
-                            "magnitude": 2.0,
-                        }
-                    ],
+                    "abilities": timed_use_ability(
+                        [
+                            {
+                                "type": "apply_item_haste",
+                                "target": "self_item",
+                                "magnitude": 2.0,
+                            }
+                        ]
+                    ),
                 },
             ],
             players=[
@@ -296,13 +392,15 @@ class ItemStatusEffectTests(unittest.TestCase):
                     "size": 1,
                     "cooldown_seconds": 99.0,
                     "initial_delay_seconds": 0.0,
-                    "effects": [
-                        {
-                            "type": "apply_item_slow",
-                            "target": "opponent_item",
-                            "magnitude": 2.0,
-                        }
-                    ],
+                    "abilities": timed_use_ability(
+                        [
+                            {
+                                "type": "apply_item_slow",
+                                "target": "opponent_item",
+                                "magnitude": 2.0,
+                            }
+                        ]
+                    ),
                 },
                 {
                     "id": "target",
@@ -310,13 +408,15 @@ class ItemStatusEffectTests(unittest.TestCase):
                     "size": 1,
                     "cooldown_seconds": 2.0,
                     "initial_delay_seconds": 4.0,
-                    "effects": [
-                        {
-                            "type": "damage",
-                            "target": "opponent",
-                            "magnitude": 1.0,
-                        }
-                    ],
+                    "abilities": timed_use_ability(
+                        [
+                            {
+                                "type": "damage",
+                                "target": "opponent",
+                                "magnitude": 1.0,
+                            }
+                        ]
+                    ),
                 },
             ],
             players=[
@@ -364,13 +464,15 @@ class ItemStatusEffectTests(unittest.TestCase):
                     "size": 1,
                     "cooldown_seconds": 99.0,
                     "initial_delay_seconds": 0.0,
-                    "effects": [
-                        {
-                            "type": "apply_item_charge",
-                            "target": "opponent_item",
-                            "magnitude": 2.0,
-                        }
-                    ],
+                    "abilities": timed_use_ability(
+                        [
+                            {
+                                "type": "apply_item_charge",
+                                "target": "opponent_item",
+                                "magnitude": 2.0,
+                            }
+                        ]
+                    ),
                 },
                 {
                     "id": "target",
@@ -378,13 +480,15 @@ class ItemStatusEffectTests(unittest.TestCase):
                     "size": 1,
                     "cooldown_seconds": 5.0,
                     "initial_delay_seconds": 5.0,
-                    "effects": [
-                        {
-                            "type": "damage",
-                            "target": "opponent",
-                            "magnitude": 1.0,
-                        }
-                    ],
+                    "abilities": timed_use_ability(
+                        [
+                            {
+                                "type": "damage",
+                                "target": "opponent",
+                                "magnitude": 1.0,
+                            }
+                        ]
+                    ),
                 },
             ],
             players=[
@@ -432,13 +536,15 @@ class ItemStatusEffectTests(unittest.TestCase):
                     "size": 1,
                     "cooldown_seconds": 99.0,
                     "initial_delay_seconds": 0.0,
-                    "effects": [
-                        {
-                            "type": "apply_item_freeze",
-                            "target": "opponent_item",
-                            "magnitude": 2.0,
-                        }
-                    ],
+                    "abilities": timed_use_ability(
+                        [
+                            {
+                                "type": "apply_item_freeze",
+                                "target": "opponent_item",
+                                "magnitude": 2.0,
+                            }
+                        ]
+                    ),
                 },
                 {
                     "id": "target",
@@ -446,13 +552,15 @@ class ItemStatusEffectTests(unittest.TestCase):
                     "size": 1,
                     "cooldown_seconds": 2.0,
                     "initial_delay_seconds": 1.0,
-                    "effects": [
-                        {
-                            "type": "damage",
-                            "target": "opponent",
-                            "magnitude": 1.0,
-                        }
-                    ],
+                    "abilities": timed_use_ability(
+                        [
+                            {
+                                "type": "damage",
+                                "target": "opponent",
+                                "magnitude": 1.0,
+                            }
+                        ]
+                    ),
                 },
             ],
             players=[
@@ -500,13 +608,15 @@ class ItemStatusEffectTests(unittest.TestCase):
                     "size": 1,
                     "cooldown_seconds": 99.0,
                     "initial_delay_seconds": 0.0,
-                    "effects": [
-                        {
-                            "type": "apply_item_flight",
-                            "target": "opponent_item",
-                            "magnitude": 4.0,
-                        }
-                    ],
+                    "abilities": timed_use_ability(
+                        [
+                            {
+                                "type": "apply_item_flight",
+                                "target": "opponent_item",
+                                "magnitude": 4.0,
+                            }
+                        ]
+                    ),
                 },
                 {
                     "id": "slow",
@@ -514,13 +624,15 @@ class ItemStatusEffectTests(unittest.TestCase):
                     "size": 1,
                     "cooldown_seconds": 99.0,
                     "initial_delay_seconds": 1.0,
-                    "effects": [
-                        {
-                            "type": "apply_item_slow",
-                            "target": "opponent_item",
-                            "magnitude": 2.0,
-                        }
-                    ],
+                    "abilities": timed_use_ability(
+                        [
+                            {
+                                "type": "apply_item_slow",
+                                "target": "opponent_item",
+                                "magnitude": 2.0,
+                            }
+                        ]
+                    ),
                 },
                 {
                     "id": "target",
@@ -528,13 +640,15 @@ class ItemStatusEffectTests(unittest.TestCase):
                     "size": 1,
                     "cooldown_seconds": 4.0,
                     "initial_delay_seconds": 4.0,
-                    "effects": [
-                        {
-                            "type": "damage",
-                            "target": "opponent",
-                            "magnitude": 1.0,
-                        }
-                    ],
+                    "abilities": timed_use_ability(
+                        [
+                            {
+                                "type": "damage",
+                                "target": "opponent",
+                                "magnitude": 1.0,
+                            }
+                        ]
+                    ),
                 },
             ],
             players=[

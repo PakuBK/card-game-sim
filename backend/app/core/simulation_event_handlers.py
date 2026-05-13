@@ -5,7 +5,7 @@ from itertools import count
 import random
 from typing import Any
 
-from app.core.simulation_board import resolve_effect_target, select_target_item_instance_id
+from app.core.simulation_board import select_target_item_instance_ids, select_target_player_ids
 from app.core.simulation_item_modifiers import (
     apply_modifier_duration_halving,
 )
@@ -38,6 +38,8 @@ from app.core.simulation_types import (
     EVENT_ITEM_SLOW_END,
     EVENT_ITEM_SLOW_START,
     EVENT_ITEM_USE,
+    EVENT_COMBAT_START,
+    EVENT_ITEM_ABILITY,
     EVENT_POISON_TICK,
     EVENT_REGEN_TICK,
     POISON_TICK_INTERVAL_SECONDS,
@@ -49,7 +51,7 @@ from app.core.simulation_types import (
     RuntimePlayer,
     make_event,
 )
-from app.models.base_models import EffectTarget, ItemRunMetrics, RunMetrics
+from app.models.base_models import EffectTarget, ItemRunMetrics, ItemTriggerType, RunMetrics, TargetingMode
 
 
 SPEED_MODIFIER_END_EVENTS = {
@@ -79,20 +81,50 @@ def _append_modifier_timer_trace(entry: dict[str, Any]) -> None:
     _MODIFIER_TIMER_TRACE.append(entry)
 
 
-def _resolve_item_target_id(
+def _iter_ability_effects(runtime_item: RuntimeItem, trigger_type: ItemTriggerType) -> list:
+    effects = []
+    for ability in runtime_item.definition.abilities:
+        if ability.trigger.type == trigger_type:
+            effects.extend(ability.effects)
+    return effects
+
+
+def _has_timed_use_ability(runtime_item: RuntimeItem) -> bool:
+    return any(
+        ability.trigger.type == ItemTriggerType.TIMED_USE
+        for ability in runtime_item.definition.abilities
+    )
+
+
+def _enqueue_item_modifier_event(
     *,
-    source_item: RuntimeItem,
-    effect_target: EffectTarget,
-    board_by_player: dict[str, RuntimeBoard],
-    runtime_item_lookup: dict[str, RuntimeItem],
-    rng: random.Random,
-) -> str | None:
-    return select_target_item_instance_id(
-        source_item=source_item,
-        effect_target=effect_target,
-        board_by_player=board_by_player,
-        runtime_item_lookup=runtime_item_lookup,
-        rng=rng,
+    effect_type: str,
+    owner_id: str,
+    source_item_instance_id: str,
+    target_item_id: str,
+    magnitude: float,
+    current_time: float,
+    queue: list[Event],
+    sequence: count,
+) -> None:
+    event_type = {
+        "apply_item_slow": EVENT_ITEM_SLOW_START,
+        "apply_item_haste": EVENT_ITEM_HASTE_START,
+        "apply_item_freeze": EVENT_ITEM_FREEZE_START,
+        "apply_item_flight": EVENT_ITEM_FLIGHT_START,
+        "apply_item_charge": EVENT_ITEM_CHARGE,
+    }[effect_type]
+    heapq.heappush(
+        queue,
+        make_event(
+            time=current_time,
+            sequence=sequence,
+            event_type=event_type,
+            source_id=owner_id,
+            target_id=target_item_id,
+            source_item_instance_id=source_item_instance_id,
+            effect_magnitude=magnitude,
+        ),
     )
 
 
@@ -285,6 +317,7 @@ def handle_item_modifier_start_event(
     *,
     event: Event,
     runtime_item_lookup: dict[str, RuntimeItem],
+    board_by_player: dict[str, RuntimeBoard],
     modifier_type: str,
     current_time: float,
     queue: list[Event],
@@ -344,6 +377,16 @@ def handle_item_modifier_start_event(
         )
 
     if modifier_type not in SPEED_MODIFIER_END_EVENTS:
+        # Still allow adjacency-triggered abilities to react.
+        _schedule_adjacent_modifier_reactions(
+            event=event,
+            runtime_item_lookup=runtime_item_lookup,
+            board_by_player=board_by_player,
+            modifier_type=modifier_type,
+            current_time=current_time,
+            queue=queue,
+            sequence=sequence,
+        )
         return
 
     end_event_type = SPEED_MODIFIER_END_EVENTS[modifier_type]
@@ -360,6 +403,70 @@ def handle_item_modifier_start_event(
             modifier_instance_id=modifier_instance_id,
         ),
     )
+
+    _schedule_adjacent_modifier_reactions(
+        event=event,
+        runtime_item_lookup=runtime_item_lookup,
+        board_by_player=board_by_player,
+        modifier_type=modifier_type,
+        current_time=current_time,
+        queue=queue,
+        sequence=sequence,
+    )
+
+
+def _schedule_adjacent_modifier_reactions(
+    *,
+    event: Event,
+    runtime_item_lookup: dict[str, RuntimeItem],
+    board_by_player: dict[str, RuntimeBoard],
+    modifier_type: str,
+    current_time: float,
+    queue: list[Event],
+    sequence: count,
+) -> None:
+    target_item_id = event.target_id
+    if target_item_id is None:
+        return
+
+    target_item = runtime_item_lookup.get(target_item_id)
+    if target_item is None:
+        return
+
+    board = board_by_player.get(target_item.owner_id)
+    if board is None:
+        return
+
+    neighbor_ids = sorted(board.adjacency_by_item_instance_id.get(target_item_id, []))
+    for neighbor_id in neighbor_ids:
+        neighbor_item = runtime_item_lookup.get(neighbor_id)
+        if neighbor_item is None:
+            continue
+        if not neighbor_item.definition.abilities:
+            continue
+
+        for ability_index, ability in enumerate(neighbor_item.definition.abilities):
+            if ability.trigger.type != ItemTriggerType.ADJACENT_ITEM_MODIFIER_START:
+                continue
+            if ability.trigger.modifier_type is None:
+                continue
+            if ability.trigger.modifier_type.value != modifier_type:
+                continue
+
+            heapq.heappush(
+                queue,
+                make_event(
+                    time=current_time,
+                    sequence=sequence,
+                    event_type=EVENT_ITEM_ABILITY,
+                    source_id=neighbor_item.owner_id,
+                    target_id=neighbor_item.instance_id,
+                    source_item_instance_id=neighbor_item.instance_id,
+                    ability_index=ability_index,
+                    trigger_item_instance_id=target_item_id,
+                    trigger_source_item_instance_id=event.source_item_instance_id,
+                ),
+            )
 
 
 def handle_item_modifier_end_event(
@@ -467,157 +574,292 @@ def resolve_item_use(
     sequence: count,
     rng: random.Random,
 ) -> str | None:
-    item = runtime_item.definition
     owner_metrics = select_player_metrics(metrics, owner.player_id)
     target_player_id: str | None = None
 
-    for effect in item.effects:
+    for effect in _iter_ability_effects(runtime_item, ItemTriggerType.TIMED_USE):
         effect_type = effect.type.value
-        target_player, effect_target_id = resolve_effect_target(
-            source_item=runtime_item,
-            effect_target=effect.target,
-            players=players,
-            board_by_player=board_by_player,
-            runtime_item_lookup=runtime_item_lookup,
-            rng=rng,
-        )
-        if effect_target_id is None and effect.target != EffectTarget.SELF and effect.target != EffectTarget.OPPONENT:
-            continue
-        # Track the target player ID (the actual recipient of effects, not the item)
-        if target_player_id is None:
-            target_player_id = target_player.player_id
         if item_metric is not None:
             increment_counter(item_metric.events_triggered, effect_type)
 
-        if effect_type == "damage":
-            dealt = apply_damage(target_player, effect.magnitude)
-            owner.total_damage_done += dealt
-            record_damage_to_opponent(
-                metrics=metrics,
-                players=players,
-                source_player_id=owner.player_id,
-                target_player_id=target_player.player_id,
-                damage_type="direct",
-                amount=dealt,
-                item_metrics_by_instance=None,
-                source_item_instance_id=runtime_item.instance_id,
-                fallback_item_metric=item_metric,
-            )
-
-        elif effect_type == "heal":
-            healed = apply_heal(target_player, effect.magnitude)
-            owner.total_healing_done += healed
-            apply_heal_status_reduction(target_player, healed)
-
-        elif effect_type == "shield":
-            target_player.shield += effect.magnitude
-
-        elif effect_type == "apply_burn":
-            track_status_metrics(owner_metrics.status_effects_applied.burn, effect.magnitude)
-            target_metrics = select_player_metrics(metrics, target_player.player_id)
-            track_status_metrics(target_metrics.status_effects_received.burn, effect.magnitude)
-            if item_metric is not None:
-                track_status_metrics(item_metric.status_effects_applied.burn, effect.magnitude)
-            schedule_status(
-                player=target_player,
-                status="burn",
-                amount=effect.magnitude,
-                source_player_id=owner.player_id,
-                source_item_instance_id=runtime_item.instance_id,
-                current_time=current_time,
-                queue=queue,
-                sequence=sequence,
-            )
-
-        elif effect_type == "apply_poison":
-            track_status_metrics(owner_metrics.status_effects_applied.poison, effect.magnitude)
-            target_metrics = select_player_metrics(metrics, target_player.player_id)
-            track_status_metrics(target_metrics.status_effects_received.poison, effect.magnitude)
-            if item_metric is not None:
-                track_status_metrics(item_metric.status_effects_applied.poison, effect.magnitude)
-            schedule_status(
-                player=target_player,
-                status="poison",
-                amount=effect.magnitude,
-                source_player_id=owner.player_id,
-                source_item_instance_id=runtime_item.instance_id,
-                current_time=current_time,
-                queue=queue,
-                sequence=sequence,
-            )
-
-        elif effect_type in {"apply_item_slow", "apply_item_haste", "apply_item_freeze"}:
-            target_item_id = _resolve_item_target_id(
+        if effect_type in {"damage", "heal", "shield", "apply_burn", "apply_poison"}:
+            target_player_ids = select_target_player_ids(
                 source_item=runtime_item,
                 effect_target=effect.target,
+                rng=rng,
+            )
+            for target_player_id_i in target_player_ids:
+                target_player = players[target_player_id_i]
+                if target_player_id is None:
+                    target_player_id = target_player.player_id
+
+                if effect_type == "damage":
+                    dealt = apply_damage(target_player, effect.magnitude)
+                    owner.total_damage_done += dealt
+                    record_damage_to_opponent(
+                        metrics=metrics,
+                        players=players,
+                        source_player_id=owner.player_id,
+                        target_player_id=target_player.player_id,
+                        damage_type="direct",
+                        amount=dealt,
+                        item_metrics_by_instance=None,
+                        source_item_instance_id=runtime_item.instance_id,
+                        fallback_item_metric=item_metric,
+                    )
+
+                elif effect_type == "heal":
+                    healed = apply_heal(target_player, effect.magnitude)
+                    owner.total_healing_done += healed
+                    apply_heal_status_reduction(target_player, healed)
+
+                elif effect_type == "shield":
+                    target_player.shield += effect.magnitude
+
+                elif effect_type == "apply_burn":
+                    track_status_metrics(owner_metrics.status_effects_applied.burn, effect.magnitude)
+                    target_metrics = select_player_metrics(metrics, target_player.player_id)
+                    track_status_metrics(target_metrics.status_effects_received.burn, effect.magnitude)
+                    if item_metric is not None:
+                        track_status_metrics(item_metric.status_effects_applied.burn, effect.magnitude)
+                    schedule_status(
+                        player=target_player,
+                        status="burn",
+                        amount=effect.magnitude,
+                        source_player_id=owner.player_id,
+                        source_item_instance_id=runtime_item.instance_id,
+                        current_time=current_time,
+                        queue=queue,
+                        sequence=sequence,
+                    )
+
+                elif effect_type == "apply_poison":
+                    track_status_metrics(owner_metrics.status_effects_applied.poison, effect.magnitude)
+                    target_metrics = select_player_metrics(metrics, target_player.player_id)
+                    track_status_metrics(target_metrics.status_effects_received.poison, effect.magnitude)
+                    if item_metric is not None:
+                        track_status_metrics(item_metric.status_effects_applied.poison, effect.magnitude)
+                    schedule_status(
+                        player=target_player,
+                        status="poison",
+                        amount=effect.magnitude,
+                        source_player_id=owner.player_id,
+                        source_item_instance_id=runtime_item.instance_id,
+                        current_time=current_time,
+                        queue=queue,
+                        sequence=sequence,
+                    )
+
+        elif effect_type in {
+            "apply_item_slow",
+            "apply_item_haste",
+            "apply_item_freeze",
+            "apply_item_flight",
+            "apply_item_charge",
+        }:
+            target_item_ids = select_target_item_instance_ids(
+                source_item=runtime_item,
+                effect_target=effect.target,
+                targeting_mode=effect.targeting_mode,
+                target_count=effect.target_count,
                 board_by_player=board_by_player,
                 runtime_item_lookup=runtime_item_lookup,
                 rng=rng,
             )
-            if target_item_id is not None:
-                event_type = {
-                    "apply_item_slow": EVENT_ITEM_SLOW_START,
-                    "apply_item_haste": EVENT_ITEM_HASTE_START,
-                    "apply_item_freeze": EVENT_ITEM_FREEZE_START,
-                }[effect_type]
-                heapq.heappush(
-                    queue,
-                    make_event(
-                        time=current_time,
-                        sequence=sequence,
-                        event_type=event_type,
-                        source_id=owner.player_id,
-                        target_id=target_item_id,
-                        source_item_instance_id=runtime_item.instance_id,
-                        effect_magnitude=effect.magnitude,
-                    ),
-                )
-
-        elif effect_type == "apply_item_flight":
-            target_item_id = _resolve_item_target_id(
-                source_item=runtime_item,
-                effect_target=effect.target,
-                board_by_player=board_by_player,
-                runtime_item_lookup=runtime_item_lookup,
-                rng=rng,
-            )
-            if target_item_id is not None:
-                heapq.heappush(
-                    queue,
-                    make_event(
-                        time=current_time,
-                        sequence=sequence,
-                        event_type=EVENT_ITEM_FLIGHT_START,
-                        source_id=owner.player_id,
-                        target_id=target_item_id,
-                        source_item_instance_id=runtime_item.instance_id,
-                        effect_magnitude=effect.magnitude,
-                    ),
-                )
-
-        elif effect_type == "apply_item_charge":
-            target_item_id = _resolve_item_target_id(
-                source_item=runtime_item,
-                effect_target=effect.target,
-                board_by_player=board_by_player,
-                runtime_item_lookup=runtime_item_lookup,
-                rng=rng,
-            )
-            if target_item_id is not None:
-                heapq.heappush(
-                    queue,
-                    make_event(
-                        time=current_time,
-                        sequence=sequence,
-                        event_type=EVENT_ITEM_CHARGE,
-                        source_id=owner.player_id,
-                        target_id=target_item_id,
-                        source_item_instance_id=runtime_item.instance_id,
-                        effect_magnitude=effect.magnitude,
-                    ),
+            for target_item_id in target_item_ids:
+                _enqueue_item_modifier_event(
+                    effect_type=effect_type,
+                    owner_id=owner.player_id,
+                    source_item_instance_id=runtime_item.instance_id,
+                    target_item_id=target_item_id,
+                    magnitude=effect.magnitude,
+                    current_time=current_time,
+                    queue=queue,
+                    sequence=sequence,
                 )
 
     return target_player_id
+
+
+def handle_combat_start_event(
+    *,
+    event: Event,
+    runtime_item_lookup: dict[str, RuntimeItem],
+    board_by_player: dict[str, RuntimeBoard],
+    current_time: float,
+    queue: list[Event],
+    sequence: count,
+) -> None:
+    if event.event_type != EVENT_COMBAT_START:
+        return
+
+    def sort_key(item: RuntimeItem) -> tuple:
+        board = board_by_player[item.owner_id]
+        board_item = board.items_by_instance_id.get(item.instance_id)
+        if board_item is None:
+            return (item.owner_id, 999, 999, item.instance_id)
+        return (item.owner_id, board_item.start_slot, board_item.end_slot, item.instance_id)
+
+    for runtime_item in sorted(runtime_item_lookup.values(), key=sort_key):
+        if not runtime_item.definition.abilities:
+            continue
+        for ability_index, ability in enumerate(runtime_item.definition.abilities):
+            if ability.trigger.type != ItemTriggerType.COMBAT_START:
+                continue
+            heapq.heappush(
+                queue,
+                make_event(
+                    time=current_time,
+                    sequence=sequence,
+                    event_type=EVENT_ITEM_ABILITY,
+                    source_id=runtime_item.owner_id,
+                    target_id=runtime_item.instance_id,
+                    source_item_instance_id=runtime_item.instance_id,
+                    ability_index=ability_index,
+                ),
+            )
+
+
+def handle_item_ability_event(
+    *,
+    event: Event,
+    players: dict[str, RuntimePlayer],
+    runtime_item_lookup: dict[str, RuntimeItem],
+    board_by_player: dict[str, RuntimeBoard],
+    metrics: RunMetrics,
+    item_metrics_by_instance: dict[str, ItemRunMetrics],
+    current_time: float,
+    queue: list[Event],
+    sequence: count,
+    rng: random.Random,
+) -> str | None:
+    if event.event_type != EVENT_ITEM_ABILITY:
+        return None
+
+    runtime_item = runtime_item_lookup.get(event.target_id or "")
+    if runtime_item is None:
+        return None
+
+    ability_index = event.ability_index
+    if ability_index is None:
+        return None
+    if ability_index < 0 or ability_index >= len(runtime_item.definition.abilities):
+        return None
+
+    ability = runtime_item.definition.abilities[ability_index]
+    owner = players[runtime_item.owner_id]
+    item_metric = item_metrics_by_instance.get(runtime_item.instance_id)
+    if item_metric is not None:
+        increment_counter(item_metric.events_triggered, f"ability:{ability.trigger.type.value}")
+
+    # Apply ability effects.
+    primary_target_player_id: str | None = None
+    for effect in ability.effects:
+        effect_type = effect.type.value
+        if item_metric is not None:
+            increment_counter(item_metric.events_triggered, effect_type)
+
+        if effect_type in {"damage", "heal", "shield", "apply_burn", "apply_poison"}:
+            target_player_ids = select_target_player_ids(
+                source_item=runtime_item,
+                effect_target=effect.target,
+                rng=rng,
+            )
+            for target_player_id_i in target_player_ids:
+                target_player = players[target_player_id_i]
+                if primary_target_player_id is None:
+                    primary_target_player_id = target_player.player_id
+
+                if effect_type == "damage":
+                    dealt = apply_damage(target_player, effect.magnitude)
+                    owner.total_damage_done += dealt
+                    record_damage_to_opponent(
+                        metrics=metrics,
+                        players=players,
+                        source_player_id=owner.player_id,
+                        target_player_id=target_player.player_id,
+                        damage_type="direct",
+                        amount=dealt,
+                        item_metrics_by_instance=None,
+                        source_item_instance_id=runtime_item.instance_id,
+                        fallback_item_metric=item_metric,
+                    )
+
+                elif effect_type == "heal":
+                    healed = apply_heal(target_player, effect.magnitude)
+                    owner.total_healing_done += healed
+                    apply_heal_status_reduction(target_player, healed)
+
+                elif effect_type == "shield":
+                    target_player.shield += effect.magnitude
+
+                elif effect_type == "apply_burn":
+                    owner_metrics = select_player_metrics(metrics, owner.player_id)
+                    track_status_metrics(owner_metrics.status_effects_applied.burn, effect.magnitude)
+                    target_metrics = select_player_metrics(metrics, target_player.player_id)
+                    track_status_metrics(target_metrics.status_effects_received.burn, effect.magnitude)
+                    if item_metric is not None:
+                        track_status_metrics(item_metric.status_effects_applied.burn, effect.magnitude)
+                    schedule_status(
+                        player=target_player,
+                        status="burn",
+                        amount=effect.magnitude,
+                        source_player_id=owner.player_id,
+                        source_item_instance_id=runtime_item.instance_id,
+                        current_time=current_time,
+                        queue=queue,
+                        sequence=sequence,
+                    )
+
+                elif effect_type == "apply_poison":
+                    owner_metrics = select_player_metrics(metrics, owner.player_id)
+                    track_status_metrics(owner_metrics.status_effects_applied.poison, effect.magnitude)
+                    target_metrics = select_player_metrics(metrics, target_player.player_id)
+                    track_status_metrics(target_metrics.status_effects_received.poison, effect.magnitude)
+                    if item_metric is not None:
+                        track_status_metrics(item_metric.status_effects_applied.poison, effect.magnitude)
+                    schedule_status(
+                        player=target_player,
+                        status="poison",
+                        amount=effect.magnitude,
+                        source_player_id=owner.player_id,
+                        source_item_instance_id=runtime_item.instance_id,
+                        current_time=current_time,
+                        queue=queue,
+                        sequence=sequence,
+                    )
+
+        elif effect_type in {
+            "apply_item_slow",
+            "apply_item_haste",
+            "apply_item_freeze",
+            "apply_item_flight",
+            "apply_item_charge",
+        }:
+            target_item_ids = select_target_item_instance_ids(
+                source_item=runtime_item,
+                effect_target=effect.target,
+                targeting_mode=effect.targeting_mode,
+                target_count=effect.target_count,
+                board_by_player=board_by_player,
+                runtime_item_lookup=runtime_item_lookup,
+                rng=rng,
+                trigger_item_instance_id=event.trigger_item_instance_id,
+                trigger_source_item_instance_id=event.trigger_source_item_instance_id,
+            )
+            for target_item_id in target_item_ids:
+                _enqueue_item_modifier_event(
+                    effect_type=effect_type,
+                    owner_id=owner.player_id,
+                    source_item_instance_id=runtime_item.instance_id,
+                    target_item_id=target_item_id,
+                    magnitude=effect.magnitude,
+                    current_time=current_time,
+                    queue=queue,
+                    sequence=sequence,
+                )
+
+    return primary_target_player_id or runtime_item.instance_id
 
 
 def handle_item_use_event(
@@ -641,6 +883,9 @@ def handle_item_use_event(
 
     if event.source_id in alive_at_time:
         runtime_item = runtime_item_lookup[event.target_id or ""]
+        if not _has_timed_use_ability(runtime_item):
+            return log_target_id
+
         item_metric = item_metrics_by_instance.get(runtime_item.instance_id)
         if item_metric is not None:
             increment_counter(item_metric.events_triggered, "used")

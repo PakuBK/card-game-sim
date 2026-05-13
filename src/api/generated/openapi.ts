@@ -141,7 +141,7 @@ export interface components {
              * Source Player Id
              * @enum {string}
              */
-            source_player_id: "player_a" | "player_b";
+            source_player_id: "player_a" | "player_b" | "system";
             /** Source Item Instance Id */
             source_item_instance_id?: string | null;
             /** Target Id */
@@ -200,7 +200,7 @@ export interface components {
          * EffectTarget
          * @enum {string}
          */
-        EffectTarget: "self" | "opponent" | "self_item" | "opponent_item" | "enemy_adjacent" | "enemy_random" | "self_random" | "any_random" | "self_small_item" | "self_medium_item" | "self_large_item" | "self_left_most" | "self_right_most" | "enemy_small_item" | "enemy_medium_item" | "enemy_large_item" | "enemy_left_most" | "enemy_right_most" | "any_small_item" | "any_medium_item" | "any_large_item" | "any_left_most" | "any_right_most";
+        EffectTarget: "self" | "opponent" | "self_item" | "opponent_item" | "enemy_adjacent" | "enemy_random" | "self_random" | "any_random" | "item_to_left" | "item_to_right" | "self_small_item" | "self_medium_item" | "self_large_item" | "enemy_small_item" | "enemy_medium_item" | "enemy_large_item" | "any_small_item" | "any_medium_item" | "any_large_item" | "self_left_most" | "self_right_most" | "enemy_left_most" | "enemy_right_most" | "any_left_most" | "any_right_most" | "trigger_item" | "trigger_source_item";
         /**
          * EffectType
          * @enum {string}
@@ -225,6 +225,12 @@ export interface components {
             /** Value */
             value: number;
         };
+        /** ItemAbility */
+        ItemAbility: {
+            trigger: components["schemas"]["ItemTrigger"];
+            /** Effects */
+            effects: components["schemas"]["ItemEffect"][];
+        };
         /** ItemDefinition */
         ItemDefinition: {
             /** Id */
@@ -237,8 +243,10 @@ export interface components {
             cooldown_seconds: number;
             /** Initial Delay Seconds */
             initial_delay_seconds?: number | null;
-            /** Effects */
-            effects: components["schemas"]["ItemEffect"][];
+            /** Abilities */
+            abilities: components["schemas"]["ItemAbility"][];
+            /** Tags */
+            tags?: string[];
         };
         /** ItemEffect */
         ItemEffect: {
@@ -246,7 +254,16 @@ export interface components {
             target: components["schemas"]["EffectTarget"];
             /** Magnitude */
             magnitude: number;
+            /** @default single */
+            targeting_mode: components["schemas"]["TargetingMode"];
+            /** Target Count */
+            target_count?: number | null;
         };
+        /**
+         * ItemModifierType
+         * @enum {string}
+         */
+        ItemModifierType: "slow" | "haste" | "freeze";
         /** ItemRunMetrics */
         ItemRunMetrics: {
             /** Item Instance Id */
@@ -269,6 +286,16 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /** ItemTrigger */
+        ItemTrigger: {
+            type: components["schemas"]["ItemTriggerType"];
+            modifier_type?: components["schemas"]["ItemModifierType"] | null;
+        };
+        /**
+         * ItemTriggerType
+         * @enum {string}
+         */
+        ItemTriggerType: "timed_use" | "combat_start" | "adjacent_item_modifier_start";
         /** ModifierTimerTraceEntry */
         ModifierTimerTraceEntry: {
             /** Time */
@@ -491,6 +518,11 @@ export interface components {
          * @enum {string}
          */
         StatusType: "burn" | "poison";
+        /**
+         * TargetingMode
+         * @enum {string}
+         */
+        TargetingMode: "single" | "all" | "random_n";
     };
     responses: never;
     parameters: never;
